@@ -1,0 +1,51 @@
+name: Test
+
+on:
+  workflow_call:
+    inputs:
+      python-versions:
+        description: JSON array of Python versions to test
+        type: string
+        default: '["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Run lint
+        run: uv run --group dev ruff check .
+
+      - name: Run format check
+        run: uv run --group dev ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ${{ fromJson(inputs.python-versions) }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Run tests
+        run: uv run --python ${{ matrix.python-version }} --group dev pytest -v
+
+  vendored-loader:
+    # the loader must work as a lone file, with nothing but the stdlib
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+      - run: |
+          mkdir /tmp/vendored && cp miniformat/loader.py /tmp/vendored/miniformat.py
+          cd /tmp/vendored && python -I -c "import sys; sys.path.insert(0, '.'); import miniformat; print(miniformat.loads('a: 1'))"

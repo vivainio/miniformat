@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "miniformat"
+dynamic = ["version"]
+description = "A strict, tiny subset of YAML where every scalar is a string. The loader is one vendorable file."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.8"
+keywords = ["yaml", "config", "parser", "configuration", "vendorable"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Utilities",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/vivainio/miniformat"
+Repository = "https://github.com/vivainio/miniformat"
+Issues = "https://github.com/vivainio/miniformat/issues"
+
+[project.scripts]
+miniformat = "miniformat.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=7", "pyyaml>=6", "ruff>=0.9"]
+
+[tool.setuptools]
+packages = ["miniformat"]
+
+[tool.setuptools.dynamic]
+version = { attr = "miniformat.loader.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff.lint]
+# Explicit rather than relying on ruff's default selection, which varies by version.
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["miniformat", "helpers"]

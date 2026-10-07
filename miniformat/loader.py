@@ -1,7 +1,7 @@
 """miniformat -- a strict, tiny subset of YAML.  Single file, stdlib only.
 
-This is the loader; it is self-contained, so vendor just this file.  The optional
-writer lives in miniformat_dump.py.
+This is the loader.  It is self-contained: to vendor it, copy just this file
+(``import loader`` / rename it as you like).  The optional writer is dumper.py.
 
 Every document this module accepts is also valid YAML, so any YAML parser
 (and any editor's YAML highlighting) can read it.  The difference is meaning:
@@ -13,38 +13,52 @@ The subset
 * block maps (``key: value``) and block lists (``- item``), nested by
   indenting with spaces (tabs are an error);
 * a list under a key is always indented below it (never at the key's column);
+* tab characters only appear in comments and ``|`` blocks (``\\t`` in quotes);
 * scalars: plain (``text``) or double-quoted with JSON escapes (``"a\\tb"``);
 * multi-line text: ``|`` literal blocks only (clip chomping: one final newline);
 * ``{}`` and ``[]`` as the only flow syntax, for empty containers;
 * ``# comments``; an optional leading ``---``.
 * an empty value (``key:``) loads as ``""``.
+* ``#include path`` on a line of its own is a comment to any YAML parser, but
+  here it is replaced by the text of that file (relative to the including
+  file), indented to the ``#`` column.  Included files are trusted input:
+  there is no sandboxing.  ``load(fp)`` uses the file's directory; for
+  ``loads(text)`` pass ``base=``.
 
 Rejected with a line-numbered error: tabs for indentation, anchors/aliases/
 tags, ``>`` folded scalars, chomp indicators, single quotes, other flow syntax,
 duplicate keys, multiple documents, ``a: b: c`` (quote it), and
 multi-line plain scalars.
 
-API: ``loads``, ``load``, ``get``, ``MiniFormatError``.
-(``dumps`` / ``dump`` are in miniformat_dump.py.)
+API: ``loads``, ``load``, ``get``, ``MiniFormatError`` (``.file``, ``.line``).
+(``dumps`` / ``dump`` are in dumper.py.)
 """
 
 import json
+import os
 import re
 
 __version__ = "0.1.0"
 __all__ = ["loads", "load", "get", "MiniFormatError"]
 
 # MIT License -- see LICENSE.  Copy this file into your project freely;
-# keep this notice.
+# keep this notice.  https://github.com/vivainio/miniformat
 
 
 class MiniFormatError(ValueError):
-    """Raised for input outside the subset.  ``.line`` is 1-based (or None)."""
+    """Raised for input outside the subset.
 
-    def __init__(self, msg, line=None, source=None):
+    ``.line`` is 1-based (or None); ``.file`` names an included file (or None
+    for the main document).
+    """
+
+    def __init__(self, msg, line=None, source=None, file=None):
         self.msg = msg
         self.line = line
+        self.file = file
         text = msg if line is None else "line %d: %s" % (line, msg)
+        if file is not None:
+            text = "%s: %s" % (file, text)
         if source is not None:
             text += "\n    " + source.strip()
         super().__init__(text)
@@ -55,10 +69,12 @@ _BAD_CHAR = re.compile(
     "[^\t\n\x20-\x7e\xa0-\u2027\u202a-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]"
 )
 _QUOTED = re.compile(r'"(?:[^"\\]|\\.)*"')
-_COMMENT = re.compile(r"[ \t]#")
+_COMMENT = re.compile(r" #")
 _COLON = re.compile(r":(?:[ \t]|$)")
 _DOC_MARK = re.compile(r"(?:---|\.\.\.)(?:[ \t]|$)")
 _PLAIN_BAD_START = set("[]{}&*!|>'\"%@`#,")
+_INCLUDE = re.compile(r" *#include +(\S.*?) *$")
+_MAX_INCLUDES = 1000
 
 
 # --------------------------------------------------------------------------
@@ -66,24 +82,33 @@ _PLAIN_BAD_START = set("[]{}&*!|>'\"%@`#,")
 # --------------------------------------------------------------------------
 
 
-def loads(text):
-    """Parse a document into nested ``dict`` / ``list`` / ``str``."""
-    if text.startswith("\ufeff"):
-        text = text[1:]
-    text = text.replace("\r\n", "\n").replace("\r", "\n")
-    lines = text.split("\n")
-    for n, line in enumerate(lines, 1):
-        m = _BAD_CHAR.search(line)
-        if m:
-            raise MiniFormatError(
-                "unsupported character %r" % m.group(), n, line
-            )
-    return _Parser(lines).document()
+def loads(text, base=None):
+    """Parse a document into nested ``dict`` / ``list`` / ``str``.
+
+    ``base`` is the directory that ``#include`` paths are relative to; without
+    it, ``#include`` is an error.
+    """
+    return _Parser(_prepare(text), base).document()
 
 
 def load(fp):
-    """Like :func:`loads`, reading text from a file object."""
-    return loads(fp.read())
+    """Like :func:`loads`, reading text from a file object.  ``#include``
+    paths are relative to the file's directory when it has a name."""
+    name = getattr(fp, "name", None)
+    base = os.path.dirname(os.path.abspath(name)) if isinstance(name, str) else None
+    return loads(fp.read(), base)
+
+
+def _prepare(text, file=None):
+    """Split text into lines, normalising line ends and checking characters."""
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    for n, line in enumerate(lines, 1):
+        m = _BAD_CHAR.search(line)
+        if m:
+            raise MiniFormatError("unsupported character %r" % m.group(), n, line, file)
+    return lines
 
 
 def _split_comment(s):
@@ -93,26 +118,62 @@ def _split_comment(s):
 
 
 def _is_blank(line):
-    s = line.strip()
+    s = line.lstrip(" ")  # a tab-only "blank" line is an error, caught in skip()
     return not s or s[0] == "#"
 
 
 class _Parser:
-    def __init__(self, lines):
+    def __init__(self, lines, base=None):
         self.lines = lines
+        self.base = base
+        # (file, line number) of every line; kept in step with ``lines`` when
+        # an #include splices text in, so errors name the right place
+        self.origin = [(None, n) for n in range(1, len(lines) + 1)]
+        self.includes = 0
         self.i = 0
 
     def err(self, msg, i=None):
         i = self.i if i is None else i
-        src = self.lines[i] if i < len(self.lines) else None
-        return MiniFormatError(msg, i + 1, src)
+        if i >= len(self.lines):
+            return MiniFormatError(msg, len(self.lines))
+        file, n = self.origin[i]
+        return MiniFormatError(msg, n, self.lines[i], file)
+
+    def include(self, name):
+        """Replace the #include line at self.i by the named file's lines."""
+        i = self.i
+        file = self.origin[i][0]
+        base = os.path.dirname(file) if file else self.base
+        if base is None:
+            raise self.err("#include needs a base directory (pass base= to loads)")
+        self.includes += 1
+        if self.includes > _MAX_INCLUDES:
+            raise self.err("too many includes (is there a loop?)")
+        path = os.path.join(base, name)
+        try:
+            with open(path, encoding="utf-8") as f:
+                new = _prepare(f.read(), path)
+        except (OSError, UnicodeDecodeError) as e:
+            raise self.err("cannot include %r: %s" % (name, e)) from None
+        pad = " " * self.indent_of(i)
+        origin = [(path, n) for n in range(1, len(new) + 1)]
+        k = next((k for k, ln in enumerate(new) if not _is_blank(ln)), None)
+        if k is not None and re.match(r"---(?:[ \t]+#.*)?$", new[k]):
+            del new[k], origin[k]  # a leading '---' of the included document
+        new = [pad + ln if ln else ln for ln in new]
+        self.lines[i : i + 1] = new
+        self.origin[i : i + 1] = origin
 
     # -- cursor helpers ----------------------------------------------------
 
     def skip(self):
         """Advance to the next structural line; return its index or None."""
         while self.i < len(self.lines) and _is_blank(self.lines[self.i]):
-            self.i += 1
+            m = _INCLUDE.match(self.lines[self.i])
+            if m:
+                self.include(m.group(1))  # splices; look at the same index again
+            else:
+                self.i += 1
         if self.i >= len(self.lines):
             return None
         line = self.lines[self.i]
@@ -121,6 +182,10 @@ class _Parser:
             raise self.err("tabs are not allowed for indentation")
         if line == content and _DOC_MARK.match(content):
             raise self.err("document markers are only allowed as a first-line '---'")
+        if "\t" in _split_comment(content):
+            raise self.err(
+                "tab character outside a comment or '|' block (use \\t in quotes)"
+            )
         return self.i
 
     def indent_of(self, i):
@@ -141,7 +206,7 @@ class _Parser:
         if self.indent_of(j) != 0:
             raise self.err("document must start at column 0")
         content = self.lines[j]
-        if _split_comment(content).rstrip() in ("{}", "[]"):
+        if _split_comment(content).rstrip(" ") in ("{}", "[]"):
             result = {} if content.startswith("{") else []
             self.i += 1
         else:
@@ -179,6 +244,8 @@ class _Parser:
                 )
             entry = self.split_entry(content)
             if entry is None:
+                if content[0] in self._HINTS:
+                    raise self.bad_start(content[0])
                 raise self.err("expected 'key: value'")
             key, rest = entry
             if key in result:
@@ -202,12 +269,16 @@ class _Parser:
                 rest = ""
             elif content.startswith("- "):
                 rest = content[2:]
-                if rest.startswith(" "):
+                if rest.startswith(" ") and not _is_blank(rest):
                     raise self.err("exactly one space is allowed after '-'")
             else:
                 raise self.err("expected '- ' list item")
-            if rest and not _is_blank(rest) and rest[0] != "|" \
-                    and self.split_entry(rest) is not None:
+            if (
+                rest
+                and not _is_blank(rest)
+                and rest[0] != "|"
+                and self.split_entry(rest) is not None
+            ):
                 # '- key: v' -> rewrite as a map line indented under the dash
                 self.lines[j] = " " * (ind + 2) + rest
                 result.append(self.map_(ind + 2))
@@ -225,7 +296,7 @@ class _Parser:
             nested = self.block(parent)
             return "" if nested is None else nested
         if rest[0] == "|":
-            if _split_comment(rest).rstrip() != "|":
+            if _split_comment(rest).rstrip(" ") != "|":
                 raise self.err("only a plain '|' block scalar header is supported")
             return self.block_scalar(parent)
         v = self.inline(rest)
@@ -237,15 +308,16 @@ class _Parser:
             m = _QUOTED.match(rest)
             if not m:
                 raise self.err("unterminated or multi-line quoted string")
-            tail = rest[m.end():]
-            if tail.strip() and not re.match(r"[ \t]+#", tail):
+            tail = rest[m.end() :]
+            if not re.fullmatch(r" *| +#.*", tail):
                 raise self.err("unexpected text after quoted string")
             return self.unquote(m.group())
-        s = _split_comment(rest).rstrip()
-        if s == "{}":
+        cut = _split_comment(rest).rstrip(" ")
+        if cut == "{}":
             return {}
-        if s == "[]":
+        if cut == "[]":
             return []
+        s = cut.rstrip("\t ")
         self.check_plain(s)
         return s
 
@@ -258,23 +330,29 @@ class _Parser:
             raise self.err("lone surrogate in quoted string")
         return s
 
+    _HINTS = {
+        "[": "flow syntax is not supported (only [] and {})",
+        "{": "flow syntax is not supported (only [] and {})",
+        "&": "anchors are not supported",
+        "*": "aliases are not supported",
+        "!": "tags are not supported",
+        ">": "folded scalars are not supported; use '|'",
+        "'": "single quotes are not supported; use double quotes",
+        "%": "directives are not supported",
+    }
+
+    def bad_start(self, c):
+        hint = self._HINTS.get(c, "quote it with double quotes")
+        return self.err("a plain scalar cannot start with %r: %s" % (c, hint))
+
     def check_plain(self, s):
         if not s:
             raise self.err("empty value")
         c = s[0]
         if c in _PLAIN_BAD_START:
-            hint = {
-                "[": "flow syntax is not supported (only [] and {})",
-                "{": "flow syntax is not supported (only [] and {})",
-                "&": "anchors are not supported",
-                "*": "aliases are not supported",
-                "!": "tags are not supported",
-                ">": "folded scalars are not supported; use '|'",
-                "'": "single quotes are not supported; use double quotes",
-            }.get(c, "quote this value with double quotes")
-            raise self.err("a plain value cannot start with %r: %s" % (c, hint))
+            raise self.bad_start(c)
         if c in "-?:" and (len(s) == 1 or s[1] in " \t"):
-            raise self.err("a plain value cannot start with %r; quote it" % c)
+            raise self.err("a plain scalar cannot start with %r; quote it" % c)
         if _COLON.search(s):
             raise self.err("': ' inside a plain value; quote it with double quotes")
         if "\t" in s:
@@ -286,16 +364,16 @@ class _Parser:
             m = _QUOTED.match(content)
             if not m or not _COLON.match(content, m.end()):
                 return None
-            return self.unquote(m.group()), content[m.end() + 1:]
+            return self.unquote(m.group()), content[m.end() + 1 :]
         colon = _COLON.search(content)
         if not colon:
             return None
         comment = _COMMENT.search(content)
         if comment and comment.start() < colon.start():
             return None
-        key = content[: colon.start()].rstrip()
+        key = content[: colon.start()].rstrip(" \t")
         self.check_plain(key)
-        return key, content[colon.end():]
+        return key, content[colon.end() :]
 
     def block_scalar(self, parent):
         """Read a '|' block whose header is on the current line."""
@@ -304,7 +382,7 @@ class _Parser:
         content_indent = None
         while self.i < len(self.lines):
             line = self.lines[self.i]
-            if not line.strip():
+            if not line.strip(" "):
                 if content_indent is not None and len(line) > content_indent:
                     raise self.err("whitespace-only line longer than the block indent")
                 if content_indent is None and line:
@@ -330,14 +408,19 @@ class _Parser:
             elif ind < content_indent:
                 break
             if ind == content_indent and line[ind] == "\t":
-                raise self.err("a block line cannot start with a tab; use a quoted string")
+                raise self.err(
+                    "a block line cannot start with a tab; use a quoted string"
+                )
             body.append(line[content_indent:])
             self.i += 1
         if content_indent is None:
             return ""
+        no_final_newline = self.i >= len(self.lines) and body[-1] != ""
         while body and body[-1] == "":
             body.pop()
-        return "\n".join(body) + "\n" if body else ""
+        if not body:
+            return ""
+        return "\n".join(body) + ("" if no_final_newline else "\n")
 
 
 # --------------------------------------------------------------------------
@@ -345,8 +428,16 @@ class _Parser:
 # --------------------------------------------------------------------------
 
 _MISSING = object()
-_BOOLS = {"true": True, "yes": True, "on": True, "1": True,
-          "false": False, "no": False, "off": False, "0": False}
+_BOOLS = {
+    "true": True,
+    "yes": True,
+    "on": True,
+    "1": True,
+    "false": False,
+    "no": False,
+    "off": False,
+    "0": False,
+}
 
 
 def get(data, path, cast=str, default=_MISSING):
@@ -372,23 +463,7 @@ def get(data, path, cast=str, default=_MISSING):
             return _BOOLS[cur.lower()]
         return cast(cur)
     except (ValueError, TypeError):
-        raise ValueError("%s: cannot convert %r with %s" % (
-            path, cur, getattr(cast, "__name__", cast))) from None
-
-
-
-# --------------------------------------------------------------------------
-# command line:  python miniformat.py FILE      (prints JSON)
-# --------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) != 2:
-        sys.exit("usage: miniformat.py FILE   (prints JSON; see miniformat_dump.py --fmt)")
-    try:
-        with open(sys.argv[1], encoding="utf-8") as f:
-            parsed = load(f)
-    except MiniFormatError as e:
-        sys.exit("%s: %s" % (sys.argv[1], e))
-    print(json.dumps(parsed, indent=2, ensure_ascii=False))
+        raise ValueError(
+            "%s: cannot convert %r with %s"
+            % (path, cur, getattr(cast, "__name__", cast))
+        ) from None
