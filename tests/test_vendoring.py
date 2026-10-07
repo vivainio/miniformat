@@ -65,7 +65,7 @@ def test_loader_imports_only_stdlib_modules():
     imports = [
         ln.split()[1] for ln in src.splitlines() if ln.startswith(("import ", "from "))
     ]
-    assert sorted(imports) == ["json", "os", "re"]
+    assert sorted(imports) == ["glob", "json", "os", "re"]
     assert "from ." not in src and "import miniformat" not in src
 
 

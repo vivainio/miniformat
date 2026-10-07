@@ -28,8 +28,10 @@ The format
   space) is an ordinary comment.  The only pragma so far:
 
   ``#+include path`` is replaced by the text of that file (relative to the
-  including file), indented to the ``#`` column.  Included files are trusted
-  input: there is no sandboxing.  ``load(fp)`` uses the file's directory; for
+  including file), indented to the ``#`` column.  A path with ``*``, ``?`` or
+  ``[`` is a glob (``conf.d/*.yaml``): every matching file, sorted by path;
+  matching nothing is fine.  Included files are trusted input: there is no
+  sandboxing.  ``load(fp)`` uses the file's directory; for
   ``loads(text)`` pass ``base=``.
 
 Rejected with a line-numbered error: tabs for indentation, anchors/aliases/
@@ -41,6 +43,7 @@ API: ``loads``, ``load``, ``MiniFormatError`` (``.file``, ``.line``).
 (``dumps`` / ``dump`` are in mfdumper.py.)
 """
 
+import glob
 import json
 import os
 import re
@@ -157,29 +160,39 @@ class _Parser:
             raise self.err("#+include needs a path")
         self.include(arg)
 
-    def include(self, name):
-        """Replace the #+include line at self.i by the named file's lines."""
+    def include(self, pattern):
+        """Replace the #+include line at self.i by the named file's lines (or,
+        for a glob, the lines of every matching file in sorted order)."""
         i = self.i
         file = self.origin[i][0]
         base = os.path.dirname(file) if file else self.base
         if base is None:
             raise self.err("#+include needs a base directory (pass base= to loads)")
-        self.includes += 1
-        if self.includes > _MAX_INCLUDES:
-            raise self.err("too many includes (is there a loop?)")
-        path = os.path.join(base, name)
-        try:
-            with open(path, encoding="utf-8") as f:
-                new = _prepare(f.read(), path)
-        except (OSError, UnicodeDecodeError) as e:
-            raise self.err("cannot include %r: %s" % (name, e)) from None
+        is_glob = any(c in pattern for c in "*?[")
+        if is_glob:  # no match is fine: an empty conf.d is not an error
+            found = glob.glob(os.path.join(glob.escape(base), pattern))
+            paths = sorted(p for p in found if os.path.isfile(p))
+        else:
+            paths = [os.path.join(base, pattern)]
         pad = " " * self.indent_of(i)
-        origin = [(path, n) for n in range(1, len(new) + 1)]
-        k = next((k for k, ln in enumerate(new) if not _is_blank(ln)), None)
-        if k is not None and re.match(r"---(?:[ \t]+#.*)?$", new[k]):
-            del new[k], origin[k]  # a leading '---' of the included document
-        new = [pad + ln if ln else ln for ln in new]
-        self.lines[i : i + 1] = new
+        lines, origin = [], []
+        for path in paths:
+            self.includes += 1
+            if self.includes > _MAX_INCLUDES:
+                raise self.err("too many includes (is there a loop?)")
+            try:
+                with open(path, encoding="utf-8") as f:
+                    new = _prepare(f.read(), path)
+            except (OSError, UnicodeDecodeError) as e:
+                shown = path if is_glob else pattern
+                raise self.err("cannot include %r: %s" % (shown, e)) from None
+            got = [(path, n) for n in range(1, len(new) + 1)]
+            k = next((k for k, ln in enumerate(new) if not _is_blank(ln)), None)
+            if k is not None and re.match(r"---(?:[ \t]+#.*)?$", new[k]):
+                del new[k], got[k]  # a leading '---' of the included document
+            lines += [pad + ln if ln else ln for ln in new]
+            origin += got
+        self.lines[i : i + 1] = lines
         self.origin[i : i + 1] = origin
 
     # -- cursor helpers ----------------------------------------------------

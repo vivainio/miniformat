@@ -341,3 +341,178 @@ def test_cli_follows_includes(tmp_path):
         text=True,
     )
     assert json.loads(r.stdout) == {"a": "1", "b": "2"}
+
+
+# ---------------------------------------------------------------------- globs
+
+
+def test_glob_includes_every_match_in_sorted_order(tmp_path):
+    write(
+        tmp_path,
+        {
+            "main.yaml": "first: 1\n#+include conf.d/*.yaml\nlast: 9\n",
+            "conf.d/20-b.yaml": "b: 2\n",
+            "conf.d/10-a.yaml": "a: 1\n",
+            "conf.d/30-c.yaml": "c: 3\n",
+            "conf.d/ignored.txt": "zzz: no\n",
+        },
+    )
+    d = load_file(tmp_path / "main.yaml")
+    assert list(d) == ["first", "a", "b", "c", "last"]
+
+
+def test_glob_order_is_plain_string_order_not_numeric(tmp_path):
+    write(
+        tmp_path,
+        {
+            "main.yaml": "#+include d/*.yaml\n",
+            "d/10-x.yaml": "x: 1\n",
+            "d/2-y.yaml": "y: 2\n",
+            "d/B.yaml": "b: 3\n",
+            "d/a.yaml": "a: 4\n",
+        },
+    )
+    assert list(load_file(tmp_path / "main.yaml")) == ["x", "y", "b", "a"]
+
+
+def test_glob_with_no_match_is_fine(tmp_path):
+    write(
+        tmp_path, {"main.yaml": "a: 1\n#+include none/*.yaml\nb:\n  #+include *.nope\n"}
+    )
+    assert load_file(tmp_path / "main.yaml") == {"a": "1", "b": ""}
+    (tmp_path / "empty").mkdir()
+    write(tmp_path, {"main2.yaml": "a: 1\n#+include empty/*\n"})
+    assert load_file(tmp_path / "main2.yaml") == {"a": "1"}
+
+
+def test_glob_without_magic_still_requires_the_file(tmp_path):
+    write(tmp_path, {"main.yaml": "#+include missing.yaml\n"})
+    with pytest.raises(mf.MiniFormatError, match="cannot include 'missing.yaml'"):
+        load_file(tmp_path / "main.yaml")
+
+
+def test_glob_takes_the_indent_of_the_pragma(tmp_path):
+    write(
+        tmp_path,
+        {
+            "main.yaml": "servers:\n  - z\n  #+include s/*.yaml\nplugins:\n  #+include p/*.yaml\n",
+            "s/a.yaml": "- a\n- b: 1\n",
+            "s/b.yaml": "- c\n",
+            "p/x.yaml": "x: 1\n",
+            "p/y.yaml": "y:\n  - 2\n",
+        },
+    )
+    assert load_file(tmp_path / "main.yaml") == {
+        "servers": ["z", "a", {"b": "1"}, "c"],
+        "plugins": {"x": "1", "y": ["2"]},
+    }
+
+
+def test_glob_skips_directories_and_dotfiles(tmp_path):
+    write(
+        tmp_path,
+        {
+            "main.yaml": "#+include d/*\n",
+            "d/a.yaml": "a: 1\n",
+            "d/.hidden.yaml": "h: 2\n",
+            "d/sub/inner.yaml": "i: 3\n",
+        },
+    )
+    assert load_file(tmp_path / "main.yaml") == {"a": "1"}
+
+
+def test_glob_question_mark_and_character_classes(tmp_path):
+    write(
+        tmp_path,
+        {
+            "main.yaml": "#+include f?.yaml\n#+include g[12].yaml\n",
+            "f1.yaml": "f1: 1\n",
+            "f22.yaml": "f22: 1\n",
+            "g1.yaml": "g1: 1\n",
+            "g2.yaml": "g2: 1\n",
+            "g3.yaml": "g3: 1\n",
+        },
+    )
+    assert list(load_file(tmp_path / "main.yaml")) == ["f1", "g1", "g2"]
+
+
+def test_glob_duplicate_key_names_the_second_file(tmp_path):
+    write(
+        tmp_path,
+        {
+            "main.yaml": "#+include d/*.yaml\n",
+            "d/a.yaml": "k: 1\n",
+            "d/b.yaml": "x: 1\nk: 2\n",
+        },
+    )
+    with pytest.raises(mf.MiniFormatError, match="duplicate") as e:
+        load_file(tmp_path / "main.yaml")
+    assert e.value.file.endswith("b.yaml") and e.value.line == 2
+
+
+def test_glob_error_inside_one_file_names_that_file(tmp_path):
+    write(
+        tmp_path,
+        {
+            "main.yaml": "#+include d/*.yaml\n",
+            "d/a.yaml": "a: 1\n",
+            "d/b.yaml": "b: &anchor 2\n",
+        },
+    )
+    with pytest.raises(mf.MiniFormatError, match="anchors") as e:
+        load_file(tmp_path / "main.yaml")
+    assert e.value.file.endswith("b.yaml") and e.value.line == 1
+
+
+def test_glob_unreadable_match_is_an_error_naming_it(tmp_path):
+    (tmp_path / "d").mkdir()
+    (tmp_path / "d" / "bin.yaml").write_bytes(b"a: \xff\n")
+    write(tmp_path, {"main.yaml": "#+include d/*.yaml\n"})
+    with pytest.raises(mf.MiniFormatError, match=r"cannot include '.*bin\.yaml'"):
+        load_file(tmp_path / "main.yaml")
+
+
+def test_glob_inside_an_included_file_is_relative_to_that_file(tmp_path):
+    write(
+        tmp_path,
+        {
+            "main.yaml": "#+include sub/entry.yaml\n",
+            "sub/entry.yaml": "e: 1\n#+include parts/*.yaml\n",
+            "sub/parts/p1.yaml": "p1: 1\n",
+            "sub/parts/p2.yaml": "p2: 2\n",
+            "parts/wrong.yaml": "wrong: 1\n",
+        },
+    )
+    assert list(load_file(tmp_path / "main.yaml")) == ["e", "p1", "p2"]
+
+
+def test_glob_characters_in_the_base_directory_are_not_magic(tmp_path):
+    odd = tmp_path / "we[ir]d*dir"
+    write(odd, {"main.yaml": "#+include c/*.yaml\n", "c/a.yaml": "a: 1\n"})
+    assert load_file(odd / "main.yaml") == {"a": "1"}
+    assert mf.loads("#+include c/*.yaml\n", base=str(odd)) == {"a": "1"}
+
+
+def test_glob_works_with_loads_and_base(tmp_path):
+    write(tmp_path, {"c/a.yaml": "a: 1\n", "c/b.yaml": "b: 2\n"})
+    assert mf.loads("#+include c/*.yaml\n", base=str(tmp_path)) == {"a": "1", "b": "2"}
+
+
+def test_glob_without_a_base_directory_is_an_error():
+    with pytest.raises(mf.MiniFormatError, match="base"):
+        mf.loads("#+include c/*.yaml\n")
+
+
+def test_glob_include_cap_counts_every_file(tmp_path):
+    write(tmp_path, {"main.yaml": "#+include d/*.yaml\n"})
+    d = tmp_path / "d"
+    d.mkdir()
+    for n in range(1001):
+        (d / ("f%04d.yaml" % n)).write_text("k%d: 1\n" % n)
+    with pytest.raises(mf.MiniFormatError, match="too many includes"):
+        load_file(tmp_path / "main.yaml")
+
+
+def test_file_with_a_glob_pragma_is_still_plain_yaml(tmp_path):
+    text = "a: 1\n#+include conf.d/*.yaml\nb:\n  #+include more/*.yaml\n  c: 2\n"
+    assert yaml.safe_load(text) == {"a": 1, "b": {"c": 2}}

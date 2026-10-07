@@ -184,12 +184,20 @@ db:
 servers:
   - a
   #+include more-servers.yaml
+plugins:
+  # every plugin file, in sorted order (a comment goes on its own line)
+  #+include conf.d/*.yaml
 ```
 
 - The path is the rest of the line (no trailing comment). Paths are relative
   to the including file, so nested includes work. `load(f)` uses the file's
   directory; `loads(text, base=dir)` is needed to use includes with a string
   (otherwise `#+include` is an error).
+- **Globs:** a path containing `*`, `?` or `[` includes every matching file
+  (not directories, not dotfiles), sorted by path (plain string order, so
+  `10-x.yaml` comes before `2-y.yaml`). Each file is placed at the pragma's
+  indent, one after the other. Matching nothing is fine, so an empty
+  `conf.d/` works. There is no `**`.
 - It is plain text substitution: duplicate keys are errors, a list can't be
   included into a map, and there is no overriding or merging.
 - Included files are trusted input: there is no sandboxing of paths.
