@@ -178,7 +178,7 @@ Rules:
 A `|` block that ends at the end of the file without a final newline has no
 trailing newline either, exactly as in YAML.
 
-Rejected with a line-numbered error: anchors, aliases, tags, `>` folded scalars,
+Rejected with a line-numbered error: anchors, aliases, `!!` tags, tags on keys, `>` folded scalars,
 chomp indicators, single quotes, flow syntax other than `{}`/`[]`, duplicate
 keys, multiple documents, `a: b: c`, multi-line plain scalars.
 
@@ -187,6 +187,45 @@ $ miniformat bad.yaml
 bad.yaml: line 1: ': ' inside a plain value; quote it with double quotes
     a: b: c
 ```
+
+### Tags
+
+A value may start with a YAML tag: `!Name`, a space, then the value. It loads as
+a one-key map, `{"!Name": value}`. This keeps tag-heavy files such as AWS
+CloudFormation templates readable without giving up "every scalar is a string":
+
+```yaml
+queue: !Ref MyQueue
+arn: !GetAtt Q.Arn
+name: !Sub "${Env}-queue"
+policy: !Sub |
+  line ${A}
+choice: !If
+  - HasQueue
+  - !Ref Q
+```
+
+```python
+{
+    "queue": {"!Ref": "MyQueue"},
+    "arn": {"!GetAtt": "Q.Arn"},
+    "name": {"!Sub": "${Env}-queue"},
+    "policy": {"!Sub": "line ${A}\n"},
+    "choice": {"!If": ["HasQueue", {"!Ref": "Q"}]},
+}
+```
+
+- What follows the tag is any value: a plain or quoted scalar, a `|` block, `{}`
+  or `[]`, or a nested map or list on the next lines. `key: !Tag` with nothing
+  after it is `{"!Tag": ""}`.
+- One tag per value, and none on keys or at the document root. `!!str`-style
+  tags and flow collections (`!Join [a, b]`) are errors.
+- A one-key map whose key looks like a tag is the same thing: `"!Ref": x`
+  (quoted key) and `!Ref x` both load as `{"!Ref": "x"}`. The dumper writes
+  such a map as a tag, so `--fmt` normalizes to the tag form.
+- Plain YAML parsers see a tagged value. PyYAML's `safe_load` refuses unknown
+  tags, so register a constructor that returns `{tag: value}`; the tests do it
+  with `add_multi_constructor("!", ...)` to check the structure still matches.
 
 ## Writing
 

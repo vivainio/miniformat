@@ -19,6 +19,9 @@ The format
 * scalars: plain (``text``) or double-quoted with JSON escapes (``"a\\tb"``);
 * multi-line text: ``|`` literal blocks only (clip chomping: one final newline);
 * ``{}`` and ``[]`` as the only flow syntax, for empty containers;
+* a value may start with a tag, ``key: !Name value`` (the value is anything
+  above, including a ``|`` block or a nested map/list), which loads as the
+  one-key map ``{"!Name": value}``.  One tag per value, none on keys;
 * ``# comments``; an optional leading ``---``.
 * an empty value (``key:``) loads as ``""``.
 * ``#+name args`` on a line of its own is a *pragma*: a comment to any YAML
@@ -34,9 +37,9 @@ The format
   sandboxing.  ``load(fp)`` uses the file's directory; for
   ``loads(text)`` pass ``base=``.
 
-Rejected with a line-numbered error: tabs for indentation, anchors/aliases/
-tags, ``>`` folded scalars, chomp indicators, single quotes, other flow syntax,
-duplicate keys, multiple documents, ``a: b: c`` (quote it), and
+Rejected with a line-numbered error: tabs for indentation, anchors/aliases,
+``!!`` tags, ``>`` folded scalars, chomp indicators, single quotes, other flow
+syntax, duplicate keys, multiple documents, ``a: b: c`` (quote it), and
 multi-line plain scalars.
 
 API: ``loads``, ``load``, ``MiniFormatError`` (``.file``, ``.line``).
@@ -83,6 +86,8 @@ _COMMENT = re.compile(r" #")
 _COLON = re.compile(r":(?:[ \t]|$)")
 _DOC_MARK = re.compile(r"(?:---|\.\.\.)(?:[ \t]|$)")
 _PLAIN_BAD_START = set("[]{}&*!|>'\"%@`#,")
+# A tag: '!Name' ('!!' and tags on keys are not supported), then a space or the end.
+_TAG = re.compile(r"![A-Za-z](?:[A-Za-z0-9_.:-]*[A-Za-z0-9_])?(?= |$)")
 _PRAGMA = re.compile(r"#\+([a-z][a-z0-9-]*)(?: +(\S.*?))? *$")
 _MAX_INCLUDES = 1000
 
@@ -307,7 +312,7 @@ class _Parser:
             if (
                 rest
                 and not _is_blank(rest)
-                and rest[0] != "|"
+                and rest[0] not in "|!"
                 and self.split_entry(rest) is not None
             ):
                 # '- key: v' -> rewrite as a map line indented under the dash
@@ -322,6 +327,11 @@ class _Parser:
     def value(self, rest, parent):
         """Value after 'key:' or '-'; the current line is self.i."""
         rest = rest.strip(" ")
+        tag = _TAG.match(rest)
+        if tag:
+            if _TAG.match(rest[tag.end() :].lstrip(" ")):
+                raise self.err("a value can have only one tag")
+            return {tag.group(): self.value(rest[tag.end() :], parent)}
         if rest == "" or rest[0] == "#":
             self.i += 1
             nested = self.block(parent)
@@ -366,7 +376,7 @@ class _Parser:
         "{": "flow syntax is not supported (only [] and {})",
         "&": "anchors are not supported",
         "*": "aliases are not supported",
-        "!": "tags are not supported",
+        "!": "a tag is !Name, a space, then the value (no !!, none on keys)",
         ">": "folded scalars are not supported; use '|'",
         "'": "single quotes are not supported; use double quotes",
         "%": "directives are not supported",

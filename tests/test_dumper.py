@@ -18,6 +18,16 @@ from miniformat.mfdumper import dump, dumps
         ([["a", "b"], ["c"]], "-\n  - a\n  - b\n-\n  - c\n"),
         ({"a": {}, "b": [], "c": ["z"]}, "a: {}\nb: []\nc:\n  - z\n"),
         ([{}, []], "- {}\n- []\n"),
+        ({"a": {"!Ref": "x"}}, "a: !Ref x\n"),
+        ({"a": {"!Ref": ""}}, 'a: !Ref ""\n'),
+        ({"a": {"!Sub": "l\nm\n"}}, "a: !Sub |\n  l\n  m\n"),
+        ({"a": {"!If": ["c", {"!Ref": "y"}]}}, "a: !If\n  - c\n  - !Ref y\n"),
+        ({"a": {"!A": {}}}, "a: !A {}\n"),
+        ({"a": {"!A": {"!B": "x"}}}, 'a: !A\n  "!B": x\n'),
+        ({"!Ref": "x"}, '"!Ref": x\n'),
+        ({"a": {"!Ref": "x", "b": "y"}}, 'a:\n  "!Ref": x\n  b: y\n'),
+        ({"a": {"!a b": "x"}}, 'a:\n  "!a b": x\n'),
+        ([{"!Ref": "x"}, {"!Ref": "x", "k": "v"}], '- !Ref x\n- "!Ref": x\n  k: v\n'),
         ({"a": ""}, 'a: ""\n'),
         ({"": "x"}, '"": x\n'),
         ({"a": "multi\nline\n"}, "a: |\n  multi\n  line\n"),
@@ -205,3 +215,24 @@ def test_every_fuzz_object_is_valid_yaml_and_stable():
         obj = rand_root(r)
         out = dumps(obj)
         assert dumps(mf.loads(out)) == out
+
+
+def _tag_some(r, obj):
+    """Randomly wrap values in one-key tag maps."""
+    if isinstance(obj, dict):
+        obj = {k: _tag_some(r, v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        obj = [_tag_some(r, v) for v in obj]
+    return {r.choice(["!A", "!Fn::B", "!c"]): obj} if r.random() < 0.3 else obj
+
+
+def test_tagged_trees_roundtrip_and_yaml_agrees():
+    r = rng(5)
+    for _ in range(300):
+        obj = _tag_some(r, rand_root(r))
+        if not isinstance(obj, (dict, list)):
+            continue
+        text = dumps(obj)
+        assert mf.loads(text) == obj, (obj, text)
+        assert strload(text) == obj, (obj, text)
+        assert dumps(mf.loads(text)) == text

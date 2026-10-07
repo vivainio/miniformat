@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from helpers import same_shape, strload
+from helpers import TagLoader, same_shape, strload
 from miniformat import mfloader as mf
 from miniformat.mfdumper import dumps
 
@@ -44,7 +44,7 @@ def test_valid_loads_as_expected(name):
 def test_valid_is_valid_yaml_with_same_meaning(name):
     text, expected = read_valid(name)
     assert strload(text) == expected
-    assert same_shape(expected, yaml.safe_load(text))
+    assert same_shape(expected, yaml.load(text, Loader=TagLoader))
 
 
 @pytest.mark.parametrize("name", VALID)

@@ -15,6 +15,7 @@ from .mfloader import (
     _COLON,
     _COMMENT,
     _PLAIN_BAD_START,
+    _TAG,
 )
 
 __all__ = ["dumps", "dump"]
@@ -83,6 +84,16 @@ def _scalar(s):
     return s if _plain_ok(s) else _quote(s)
 
 
+def _tag_of(v):
+    """(tag, inner) if v is a one-key map whose key is a tag name: it is
+    written as '!Name inner', which the loader reads back as the same map."""
+    if isinstance(v, dict) and len(v) == 1:
+        ((k, inner),) = v.items()
+        if isinstance(k, str) and _TAG.fullmatch(k):
+            return k, inner
+    return None
+
+
 def _lines(obj, ind, path):
     pad = " " * ind
     if isinstance(obj, dict):
@@ -99,7 +110,7 @@ def _lines(obj, ind, path):
     out = []
     for n, v in enumerate(obj):
         sub = "%s[%d]" % (path, n)
-        if isinstance(v, dict) and v:
+        if isinstance(v, dict) and v and not _tag_of(v):
             inner = _lines(v, ind + 2, sub)
             inner[0] = pad + "- " + inner[0][ind + 2 :]
             out.extend(inner)
@@ -108,8 +119,12 @@ def _lines(obj, ind, path):
     return out
 
 
-def _entry(head, v, ind, path):
-    """Render 'head' (e.g. 'key:' or '-') followed by value v."""
+def _entry(head, v, ind, path, tagged=True):
+    """Render 'head' (e.g. 'key:' or '-') followed by value v.  A tag holds
+    one value, so under a tag a tag-shaped map is written as a plain map."""
+    tag = _tag_of(v) if tagged else None
+    if tag:
+        return _entry(head + " " + tag[0], tag[1], ind, path + "." + tag[0], False)
     if isinstance(v, str):
         if _block_ok(v):
             body = [(" " * (ind + 2) + ln) if ln else "" for ln in v[:-1].split("\n")]

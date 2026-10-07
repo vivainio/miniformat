@@ -6,7 +6,25 @@ import random
 import yaml
 
 
-class StrLoader(yaml.SafeLoader):
+def _tagged(loader, suffix, node):
+    """'!Name value' -> {"!Name": value}, the way miniformat reads tags."""
+    if isinstance(node, yaml.ScalarNode):
+        value = loader.construct_scalar(node)
+    elif isinstance(node, yaml.SequenceNode):
+        value = loader.construct_sequence(node, deep=True)
+    else:
+        value = loader.construct_mapping(node, deep=True)
+    return {"!" + suffix: value}
+
+
+class TagLoader(yaml.SafeLoader):
+    """PyYAML that reads '!Name value' as {"!Name": value}."""
+
+
+TagLoader.add_multi_constructor("!", _tagged)
+
+
+class StrLoader(TagLoader):
     """PyYAML with implicit typing switched off: plain scalars stay str."""
 
 
