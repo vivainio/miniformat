@@ -8,16 +8,54 @@ can copy into your project.
 
 Two things are miniformat's own: **every scalar is a string** (`no`, `8080` and
 `1.10` stay exactly as written, no Norway problem), and `#+include` pulls in
-other files. Convert strings on the consumer side:
+other files.
+
+## Reading values
+
+Given this file:
+
+```yaml
+# app.yaml
+name: my-app
+db:
+  port: 5432
+debug: yes
+servers:
+  - host: a.example.com
+```
+
+`loads` gives you plain Python dicts, lists and strings. Nothing is converted:
 
 ```python
 from miniformat import mfloader
 
 cfg = mfloader.loads(open("app.yaml").read())
-port = mfloader.get(cfg, "db.port", int, default=5432)
-debug = mfloader.get(cfg, "debug", bool, default=False)  # true/false/yes/no/on/off/1/0
-host = mfloader.get(cfg, "servers.0.host")  # lists are indexed by number
+# {'name': 'my-app', 'db': {'port': '5432'}, 'debug': 'yes',
+#  'servers': [{'host': 'a.example.com'}]}
+
+port = int(cfg["db"]["port"])  # 5432: you convert the string yourself
 ```
+
+Because every value is a string, you decide the type where you use it. That
+is all you need. `get` is an optional shortcut for the common cases (a path,
+a conversion, a default):
+
+```python
+mfloader.get(cfg, "db.port", int)  # 5432      "a.b" looks up cfg["a"]["b"]
+mfloader.get(cfg, "db.timeout", int, default=30)  # 30  missing key: the default
+mfloader.get(cfg, "debug", bool)  # True      accepts true/false/yes/no/on/off/1/0
+mfloader.get(cfg, "servers.0.host")  # 'a.example.com'  a number picks a list item
+mfloader.get(cfg, "name")  # 'my-app'  no conversion given: stays a string
+```
+
+`get(data, path, cast=str, default=...)`:
+
+- `path` is dot-separated keys; in a list, use the item's number (`servers.0`).
+- `cast` is `int`, `float`, `bool`, or any function (`str` by default).
+- If the path is missing you get `default`, or a `KeyError` if you gave none.
+  The default is returned as it is, not converted.
+- If the value can't be converted you get a `ValueError` that names the path,
+  e.g. `name: cannot convert 'my-app' with int`.
 
 ## Why
 
