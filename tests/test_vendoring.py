@@ -44,12 +44,9 @@ PRELUDE = "import sys; sys.path.insert(0, sys.argv[1]); "
 
 def test_loader_alone_as_top_level_module(tmp_path):
     shutil.copy(PKG / "mfloader.py", tmp_path / "mini.py")
-    code = (
-        PRELUDE + "import mini; "
-        "print(mini.loads('a: 1')['a'], mini.get(mini.loads('p: 80'), 'p', int))"
-    )
+    code = PRELUDE + "import mini; print(mini.loads('a: 1\\nb:\\n  - x\\n'))"
     r = run_py(code, tmp_path, str(tmp_path))
-    assert r.returncode == 0 and r.stdout.split() == ["1", "80"], r.stderr
+    assert r.returncode == 0 and "{'a': '1', 'b': ['x']}" in r.stdout, r.stderr
 
 
 def test_loader_alone_inside_someone_elses_package(tmp_path):
@@ -176,9 +173,9 @@ def test_version_is_single_sourced_in_the_loader():
 
 
 def test_public_names():
-    for name in ["loads", "load", "get", "MiniFormatError"]:
+    for name in ["loads", "load", "MiniFormatError"]:
         assert hasattr(mfloader, name)
-    assert set(mfloader.__all__) == {"loads", "load", "get", "MiniFormatError"}
+    assert set(mfloader.__all__) == {"loads", "load", "MiniFormatError"}
     from miniformat import mfdumper
 
     assert set(mfdumper.__all__) == {"dumps", "dump"}

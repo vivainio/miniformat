@@ -7,7 +7,7 @@ This is the loader.  It is self-contained: to vendor it, copy just this file
 The promise: any YAML parser can parse a document this module accepts (and
 any editor's YAML highlighting works on it).  What it *means* is up to this
 module: *every scalar is a string* (``no``, ``8080`` and ``1.10`` stay as
-written; interpret them on the consumer side with ``get(data, "a.b", int)``)
+written; convert them where you use them, e.g. ``int(cfg["db"]["port"])``)
 and ``#+include`` is expanded.
 
 The format
@@ -37,7 +37,7 @@ tags, ``>`` folded scalars, chomp indicators, single quotes, other flow syntax,
 duplicate keys, multiple documents, ``a: b: c`` (quote it), and
 multi-line plain scalars.
 
-API: ``loads``, ``load``, ``get``, ``MiniFormatError`` (``.file``, ``.line``).
+API: ``loads``, ``load``, ``MiniFormatError`` (``.file``, ``.line``).
 (``dumps`` / ``dump`` are in mfdumper.py.)
 """
 
@@ -46,7 +46,7 @@ import os
 import re
 
 __version__ = "0.1.0"
-__all__ = ["loads", "load", "get", "MiniFormatError"]
+__all__ = ["loads", "load", "MiniFormatError"]
 
 # MIT License -- see LICENSE.  Copy this file into your project freely;
 # keep this notice.  https://github.com/vivainio/miniformat
@@ -439,49 +439,3 @@ class _Parser:
         if not body:
             return ""
         return "\n".join(body) + ("" if no_final_newline else "\n")
-
-
-# --------------------------------------------------------------------------
-# typed access
-# --------------------------------------------------------------------------
-
-_MISSING = object()
-_BOOLS = {
-    "true": True,
-    "yes": True,
-    "on": True,
-    "1": True,
-    "false": False,
-    "no": False,
-    "off": False,
-    "0": False,
-}
-
-
-def get(data, path, cast=str, default=_MISSING):
-    """Fetch ``data["a"]["b"][0]`` as ``get(data, "a.b.0")``, converting it.
-
-    ``cast`` may be ``str``, ``int``, ``float``, ``bool`` (true/false/yes/no/
-    on/off/1/0, case-insensitive) or any callable.  A missing path returns
-    ``default`` if given, else raises ``KeyError``; a bad value raises
-    ``ValueError`` naming the path.
-    """
-    cur = data
-    for part in path.split("."):
-        try:
-            cur = cur[int(part)] if isinstance(cur, list) else cur[part]
-        except (KeyError, IndexError, ValueError, TypeError):
-            if default is not _MISSING:
-                return default
-            raise KeyError(path) from None
-    try:
-        if cast is bool:
-            if not isinstance(cur, str) or cur.lower() not in _BOOLS:
-                raise ValueError(cur)
-            return _BOOLS[cur.lower()]
-        return cast(cur)
-    except (ValueError, TypeError):
-        raise ValueError(
-            "%s: cannot convert %r with %s"
-            % (path, cur, getattr(cast, "__name__", cast))
-        ) from None

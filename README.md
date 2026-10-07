@@ -24,7 +24,8 @@ servers:
   - host: a.example.com
 ```
 
-`loads` gives you plain Python dicts, lists and strings. Nothing is converted:
+`loads` returns what `json.load` would: nested dicts, lists and strings, with
+the one difference that every scalar is a string. Nothing is converted:
 
 ```python
 from miniformat import mfloader
@@ -33,29 +34,10 @@ cfg = mfloader.loads(open("app.yaml").read())
 # {'name': 'my-app', 'db': {'port': '5432'}, 'debug': 'yes',
 #  'servers': [{'host': 'a.example.com'}]}
 
-port = int(cfg["db"]["port"])  # 5432: you convert the string yourself
+cfg["servers"][0]["host"]  # 'a.example.com'
+cfg["db"].get("timeout", "30")  # a default, with the plain dict method
+int(cfg["db"]["port"])  # 5432: you convert the string where you use it
 ```
-
-Because every value is a string, you decide the type where you use it. That
-is all you need. `get` is an optional shortcut for the common cases (a path,
-a conversion, a default):
-
-```python
-mfloader.get(cfg, "db.port", int)  # 5432      "a.b" looks up cfg["a"]["b"]
-mfloader.get(cfg, "db.timeout", int, default=30)  # 30  missing key: the default
-mfloader.get(cfg, "debug", bool)  # True      accepts true/false/yes/no/on/off/1/0
-mfloader.get(cfg, "servers.0.host")  # 'a.example.com'  a number picks a list item
-mfloader.get(cfg, "name")  # 'my-app'  no conversion given: stays a string
-```
-
-`get(data, path, cast=str, default=...)`:
-
-- `path` is dot-separated keys; in a list, use the item's number (`servers.0`).
-- `cast` is `int`, `float`, `bool`, or any function (`str` by default).
-- If the path is missing you get `default`, or a `KeyError` if you gave none.
-  The default is returned as it is, not converted.
-- If the value can't be converted you get a `ValueError` that names the path,
-  e.g. `name: cannot convert 'my-app' with int`.
 
 ## Why
 
@@ -87,7 +69,7 @@ parts you use, which also means you can copy any of them on their own.
 
 | File | Purpose |
 |---|---|
-| `miniformat/mfloader.py` | The loader: `loads`, `load`, `get`, `MiniFormatError`. Stdlib only, no relative imports. **This is the file to vendor.** |
+| `miniformat/mfloader.py` | The loader: `loads`, `load`, `MiniFormatError`. Stdlib only, no relative imports. **This is the file to vendor.** |
 | `miniformat/mfdumper.py` | Optional canonical writer: `dumps`, `dump`. Imports `.mfloader`. |
 | `miniformat/cli.py`, `__main__.py` | The `miniformat` command. |
 
