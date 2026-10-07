@@ -19,6 +19,23 @@ debug = mfloader.get(cfg, "debug", bool, default=False)  # true/false/yes/no/on/
 host = mfloader.get(cfg, "servers.0.host")  # lists are indexed by number
 ```
 
+## Why
+
+- **YAML is the only reasonably readable syntax that also nests well.** JSON is
+  noisy (quotes, commas, no comments), INI is flat, and TOML gets awkward as
+  soon as the data nests. Config files are for people to read and edit, and
+  YAML is the one that stays pleasant at depth.
+- **But depending on PyYAML is annoying**, especially when it would be your
+  only dependency: a package to install, pin and audit just to read one file.
+  The loader here is a single stdlib-only file you can copy into your project.
+- **And YAML itself has sharp edges**: implicit typing (`no` becomes `False`,
+  `1.10` a float), anchors, tags, several ways to write the same thing.
+  miniformat keeps the syntax people like and drops those.
+
+Because the files stay parseable as YAML, you don't lose the tooling: editors,
+highlighting and linters keep working, and you can still read the files with a
+real YAML parser when you want to.
+
 ## Install, or just copy the files
 
 ```
