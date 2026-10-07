@@ -13,9 +13,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-import miniformat as mf
 from helpers import same_shape, strload
-from miniformat import dumps
+from miniformat import mfloader as mf
+from miniformat.mfdumper import dumps
 
 CASES = Path(__file__).parent / "cases"
 VALID = sorted(p.stem for p in (CASES / "valid").glob("*.yaml"))

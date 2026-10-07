@@ -7,9 +7,10 @@ Guidelines for AI agents working on this codebase.
 `miniformat` is a small, strict config format with YAML syntax: every scalar is a string, and `#include` pulls in other files. Two rules shape every change:
 
 1. **Everything the loader accepts must parse as YAML.** That is the one promise made to users (`#include` is just a comment to a YAML parser). Matching YAML's *meaning* is not promised, but without includes the PyYAML cross-check in the tests keeps the structure identical, so a mismatch there is worth a look.
-2. **`miniformat/loader.py` must stay a single stdlib-only file** (`json`, `re` only; no relative imports, no CLI). People vendor it by copying that one file. Don't make it depend on the dumper, the CLI or `__init__`.
+2. **`miniformat/mfloader.py` must stay a single stdlib-only file** (`json`, `os`, `re` only; no relative imports, no CLI). People vendor it by copying that one file.
+3. **`miniformat/__init__.py` stays empty** (a docstring only), so any subset of the files can be copied elsewhere. `mfdumper.py` may import only `.mfloader`; `cli.py` may import only `.mfloader` and `.dumper`. `tests/test_vendoring.py` enforces all of this.
 
-`dumper.py` is the optional writer and depends only on `loader.py`. `cli.py` is the command line.
+Users write `from miniformat import mfloader` / `from miniformat import mfdumper`.
 
 ## Checks
 
@@ -32,4 +33,4 @@ Format is enforced by the pre-commit hook (`git config core.hooksPath .githooks`
 
 ## Releases
 
-Create a GitHub release tagged `vX.Y.Z`; the publish workflow sets `__version__` in `miniformat/loader.py` from the tag and publishes to PyPI. The version lives in `loader.py` so the vendored file carries it.
+Create a GitHub release tagged `vX.Y.Z`; the publish workflow sets `__version__` in `miniformat/mfloader.py` from the tag and publishes to PyPI. The version lives in `mfloader.py` so the vendored file carries it.

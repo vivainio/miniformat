@@ -2,9 +2,9 @@
 
 import pytest
 
-import miniformat as mf
 from helpers import LINE_BITS, mutate, rand_root, rand_text, rng, strload
-from miniformat import dumps
+from miniformat import mfloader as mf
+from miniformat.mfdumper import dumps
 
 SEEDS = range(8)
 N = 400

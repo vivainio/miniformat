@@ -1,6 +1,6 @@
 import pytest
 
-import miniformat as mf
+from miniformat import mfloader as mf
 
 
 def test_returns_plain_python_types():

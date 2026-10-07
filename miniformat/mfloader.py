@@ -2,7 +2,7 @@
 stdlib only.
 
 This is the loader.  It is self-contained: to vendor it, copy just this file
-(``import loader`` / rename it as you like).  The optional writer is dumper.py.
+(``from miniformat import mfloader``, or rename it as you like).  The optional writer is mfdumper.py.
 
 The promise: any YAML parser can parse a document this module accepts (and
 any editor's YAML highlighting works on it).  What it *means* is up to this
@@ -33,7 +33,7 @@ duplicate keys, multiple documents, ``a: b: c`` (quote it), and
 multi-line plain scalars.
 
 API: ``loads``, ``load``, ``get``, ``MiniFormatError`` (``.file``, ``.line``).
-(``dumps`` / ``dump`` are in dumper.py.)
+(``dumps`` / ``dump`` are in mfdumper.py.)
 """
 
 import json

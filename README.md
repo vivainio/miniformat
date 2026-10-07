@@ -11,44 +11,45 @@ Two things are miniformat's own: **every scalar is a string** (`no`, `8080` and
 other files. Convert strings on the consumer side:
 
 ```python
-import miniformat as mf
+from miniformat import mfloader
 
-cfg = mf.loads(open("app.yaml").read())
-port = mf.get(cfg, "db.port", int, default=5432)
-debug = mf.get(cfg, "debug", bool, default=False)  # true/false/yes/no/on/off/1/0
-host = mf.get(cfg, "servers.0.host")  # lists are indexed by number
+cfg = mfloader.loads(open("app.yaml").read())
+port = mfloader.get(cfg, "db.port", int, default=5432)
+debug = mfloader.get(cfg, "debug", bool, default=False)  # true/false/yes/no/on/off/1/0
+host = mfloader.get(cfg, "servers.0.host")  # lists are indexed by number
 ```
 
-## Install, or just copy the file
+## Install, or just copy the files
 
 ```
 pip install miniformat
 ```
 
-Python 3.10 or newer.
-
-**Vendoring:** the loader is one stdlib-only file with no relative imports.
-Copy [`miniformat/loader.py`](miniformat/loader.py) into your project under any
-name and import it; it needs nothing else:
-
-```python
-from myapp import _vendor_miniformat as mf  # a copy of loader.py
-
-cfg = mf.loads(text)
-```
-
-A test (`tests/test_vendoring.py`) keeps this true. The version is in the file
-(`__version__`). If you also want the writer, copy `dumper.py` next to the
-loader inside a package (it imports `.loader`).
+Python 3.10 or newer. `miniformat/__init__.py` is empty on purpose: import the
+parts you use, which also means you can copy any of them on their own.
 
 | File | Purpose |
 |---|---|
-| `miniformat/loader.py` | The loader: `loads`, `load`, `get`, `MiniFormatError`. **Vendor this.** |
-| `miniformat/dumper.py` | Optional canonical writer: `dumps`, `dump`. |
-| `miniformat/cli.py` | The `miniformat` command. |
-| `tests/` | Unit tests, language-neutral fixtures, fuzzing against PyYAML. |
+| `miniformat/mfloader.py` | The loader: `loads`, `load`, `get`, `MiniFormatError`. Stdlib only, no relative imports. **This is the file to vendor.** |
+| `miniformat/mfdumper.py` | Optional canonical writer: `dumps`, `dump`. Imports `.mfloader`. |
+| `miniformat/cli.py`, `__main__.py` | The `miniformat` command. |
 
-`import miniformat` gives you everything above in one namespace.
+**Vendoring**, from smallest to largest:
+
+- **One file.** Copy `mfloader.py` to your project (`import mfloader`). It needs
+  nothing else.
+- **The directory, trimmed to what you use.** Copy `miniformat/` into your app
+  and delete what you don't need. `__init__.py` plus `mfloader.py` is a complete
+  reader; add `mfdumper.py` for writing, `cli.py` and `__main__.py` for the
+  command.
+- **The whole directory.** Copy `miniformat/` as it is.
+
+```python
+from myapp._vendor.miniformat import mfloader  # or: from miniformat import mfloader
+```
+
+`tests/test_vendoring.py` checks each of these layouts. The version is in
+`mfloader.py` (`mfloader.__version__`), so the vendored file carries it.
 
 ```
 $ miniformat app.yaml          # print as JSON
@@ -107,9 +108,9 @@ bad.yaml: line 1: ': ' inside a plain value; quote it with double quotes
 ## Writing
 
 ```python
-from miniformat import dumps
+from miniformat import mfdumper
 
-text = dumps({"name": "x", "ports": ["80", "443"]})
+text = mfdumper.dumps({"name": "x", "ports": ["80", "443"]})
 ```
 
 Only `str`, `dict` (string keys) and `list`/`tuple` can be written; convert

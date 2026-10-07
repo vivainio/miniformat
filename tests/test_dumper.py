@@ -1,8 +1,8 @@
 import pytest
 
-import miniformat as mf
 from helpers import rand_root, rng, strload
-from miniformat import dump, dumps
+from miniformat import mfloader as mf
+from miniformat.mfdumper import dump, dumps
 
 
 @pytest.mark.parametrize(

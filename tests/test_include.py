@@ -3,7 +3,7 @@
 import pytest
 import yaml
 
-import miniformat as mf
+from miniformat import mfloader as mf
 
 
 def write(tmp_path, files):

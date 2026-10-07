@@ -48,5 +48,5 @@ jobs:
         with:
           python-version: "3.x"
       - run: |
-          mkdir /tmp/vendored && cp miniformat/loader.py /tmp/vendored/miniformat.py
+          mkdir /tmp/vendored && cp miniformat/mfloader.py /tmp/vendored/miniformat.py
           cd /tmp/vendored && python -I -c "import sys; sys.path.insert(0, '.'); import miniformat; print(miniformat.loads('a: 1'))"

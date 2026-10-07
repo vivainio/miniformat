@@ -41,7 +41,7 @@ dev = ["pytest>=7", "pyyaml>=6", "ruff>=0.9"]
 packages = ["miniformat"]
 
 [tool.setuptools.dynamic]
-version = { attr = "miniformat.loader.__version__" }
+version = { attr = "miniformat.mfloader.__version__" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

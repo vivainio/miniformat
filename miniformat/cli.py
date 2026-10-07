@@ -4,7 +4,8 @@ prints the canonical form (comments are dropped)."""
 import json
 import sys
 
-from . import MiniFormatError, dumps, load
+from .mfdumper import dumps
+from .mfloader import MiniFormatError, load
 
 USAGE = "usage: miniformat [--fmt] FILE      (prints JSON, or the canonical text with --fmt)"
 

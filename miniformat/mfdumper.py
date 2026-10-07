@@ -1,7 +1,7 @@
-"""miniformat.dumper -- canonical writer for miniformat (see loader.py).
+"""miniformat.mfdumper -- canonical writer for miniformat (see mfloader.py).
 
-Not needed to read files; vendor it (next to loader.py, in the same package)
-only if you also want to write them.
+Not needed to read files; copy it next to mfloader.py (same package) only if
+you also want to write them.  ``from miniformat import mfdumper``.
 Output is deterministic (dict order preserved) and comments are not kept.
 Only ``str``, ``dict`` (str keys) and ``list``/``tuple`` can be written;
 convert numbers and bools with ``str()`` first.
@@ -10,7 +10,7 @@ convert numbers and bools with ``str()`` first.
 MIT License -- see LICENSE.
 """
 
-from .loader import (
+from .mfloader import (
     _BAD_CHAR,
     _COLON,
     _COMMENT,
