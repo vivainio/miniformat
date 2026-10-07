@@ -56,6 +56,14 @@ $ miniformat app.yaml          # print as JSON
 $ miniformat --fmt app.yaml    # print the canonical form (comments are dropped)
 ```
 
+## File names
+
+Use **`.yml` or `.yaml`**, like any other YAML file. There is no special
+extension, on purpose: since any YAML parser can read the files, editors,
+syntax highlighting, schema tools and CI linters pick them up as they are.
+`#include` paths are written with the real file names too
+(`#include db.yaml`).
+
 ## The format
 
 ```yaml
