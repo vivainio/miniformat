@@ -188,6 +188,168 @@ bad.yaml: line 1: ': ' inside a plain value; quote it with double quotes
     a: b: c
 ```
 
+### Syntax by example
+
+Each pair shows a document and what `mfloader.loads` returns for it. Every scalar
+is a string.
+
+**Scalars are never converted:**
+
+```yaml
+port: 8080
+debug: yes
+version: 1.10
+nothing: null
+```
+
+```python
+{"port": "8080", "debug": "yes", "version": "1.10", "nothing": "null"}
+```
+
+**Plain and quoted strings.** `:` and `#` are fine inside a plain value unless
+followed by a space (colon) or preceded by one (hash); quote anything else
+awkward. Quotes are double only, with JSON escapes:
+
+```yaml
+plain: hello world
+url: http://example.com:8080/a#frag
+quoted: "a: b"
+hash: "# not a comment"
+bang: "!not-a-tag"
+escapes: "tab\there\nnew line, \u00e9"
+```
+
+```python
+{
+    "plain": "hello world",
+    "url": "http://example.com:8080/a#frag",
+    "quoted": "a: b",
+    "hash": "# not a comment",
+    "bang": "!not-a-tag",
+    "escapes": "tab\there\nnew line, \u00e9",
+}
+```
+
+**Empty values:**
+
+```yaml
+a:
+b: ""
+c: {}
+d: []
+```
+
+```python
+{"a": "", "b": "", "c": {}, "d": []}
+```
+
+**Comments** are dropped (` #` starts one, so `a#b` is just text):
+
+```yaml
+name: my-app    # a comment
+```
+
+```python
+{"name": "my-app"}
+```
+
+**Maps and lists nest by indentation**, and a list is always indented below its key:
+
+```yaml
+db:
+  host: localhost
+  ports:
+    - "5432"
+    - "5433"
+```
+
+```python
+{"db": {"host": "localhost", "ports": ["5432", "5433"]}}
+```
+
+**Lists of maps** (the first key may follow the dash):
+
+```yaml
+servers:
+  - name: a
+    ip: "1.2.3.4"
+  - name: b
+    tags:
+      - web
+      - prod
+```
+
+```python
+{
+    "servers": [
+        {"name": "a", "ip": "1.2.3.4"},
+        {"name": "b", "tags": ["web", "prod"]},
+    ]
+}
+```
+
+**Lists of lists** use a bare `-` with the inner list indented below it
+(`- - a` is not supported):
+
+```yaml
+-
+  - a
+  - b
+-
+  - c
+```
+
+```python
+[["a", "b"], ["c"]]
+```
+
+**Literal blocks** (`|`) keep line breaks and extra indentation, and end with
+one newline:
+
+```yaml
+note: |
+  first line
+    indented
+  last line
+next: x
+```
+
+```python
+{"note": "first line\n  indented\nlast line\n", "next": "x"}
+```
+
+They also work as list items:
+
+```yaml
+items:
+  - |
+    one
+    two
+  - three
+```
+
+```python
+{"items": ["one\ntwo\n", "three"]}
+```
+
+**Tags** become one-key maps (details [below](#tags)):
+
+```yaml
+queue: !Ref MyQueue
+name: !Sub "${Env}-queue"
+choice: !If
+  - HasQueue
+  - !Ref Q
+```
+
+```python
+{
+    "queue": {"!Ref": "MyQueue"},
+    "name": {"!Sub": "${Env}-queue"},
+    "choice": {"!If": ["HasQueue", {"!Ref": "Q"}]},
+}
+```
+
 ### Tags
 
 A value may start with a YAML tag: `!Name`, a space, then the value. It loads as
