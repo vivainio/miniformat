@@ -10,6 +10,8 @@ Guidelines for AI agents working on this codebase.
 2. **`miniformat/mfloader.py` must stay a single stdlib-only file** (`json`, `os`, `re` only; no relative imports, no CLI). People vendor it by copying that one file.
 3. **`miniformat/__init__.py` stays empty** (a docstring only), so any subset of the files can be copied elsewhere. `mfdumper.py` may import only `.mfloader`; `cli.py` may import only `.mfloader` and `.dumper`. `tests/test_vendoring.py` enforces all of this.
 
+New features may add semantics (like `#include` does) but must never make a file unparseable by a YAML parser: use specially formed comments or constructs YAML already accepts. Each addition needs a README entry, fixtures in `tests/cases`, and a check that a YAML parser still parses the files that use it. Don't give `#word` comments other than documented pragmas any meaning (they must stay plain comments).
+
 Users write `from miniformat import mfloader` / `from miniformat import mfdumper`.
 
 ## Checks

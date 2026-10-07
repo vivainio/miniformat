@@ -172,6 +172,20 @@ servers:
 - A plain YAML parser ignores the line, so it sees the file without the
   included parts.
 
+## Future additions
+
+miniformat reserves the right to add features like `#include`: ones that
+don't break YAML syntax (so any YAML parser can still parse the file) but do
+change what a file means to miniformat. They will be specially formed comments
+or other constructs YAML already accepts, never new syntax that a YAML parser
+would reject. New ones will be listed in this README and shipped with fixtures
+in `tests/cases`.
+
+To stay safe, write ordinary comments with a space after the `#` (`# like
+this`). A comment that starts with `#` immediately followed by a word, like
+`#include`, may get a meaning in a later version. Today `#include` is the only
+one; any other `#word` line is still just a comment.
+
 ## What "YAML-compatible" means
 
 The promise is about syntax: any YAML parser can parse a miniformat file.
