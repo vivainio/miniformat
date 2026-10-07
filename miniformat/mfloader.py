@@ -8,7 +8,7 @@ The promise: any YAML parser can parse a document this module accepts (and
 any editor's YAML highlighting works on it).  What it *means* is up to this
 module: *every scalar is a string* (``no``, ``8080`` and ``1.10`` stay as
 written; interpret them on the consumer side with ``get(data, "a.b", int)``)
-and ``#include`` is expanded.
+and ``#+include`` is expanded.
 
 The format
 ----------
@@ -21,10 +21,15 @@ The format
 * ``{}`` and ``[]`` as the only flow syntax, for empty containers;
 * ``# comments``; an optional leading ``---``.
 * an empty value (``key:``) loads as ``""``.
-* ``#include path`` on a line of its own is a comment to any YAML parser, but
-  here it is replaced by the text of that file (relative to the including
-  file), indented to the ``#`` column.  Included files are trusted input:
-  there is no sandboxing.  ``load(fp)`` uses the file's directory; for
+* ``#+name args`` on a line of its own is a *pragma*: a comment to any YAML
+  parser, but meaningful here.  ``#+`` immediately followed by a character
+  (no space) is reserved for pragmas, so an unknown or malformed one is an
+  error (a typo never silently vanishes); ``#+`` alone or ``#+ text`` (with a
+  space) is an ordinary comment.  The only pragma so far:
+
+  ``#+include path`` is replaced by the text of that file (relative to the
+  including file), indented to the ``#`` column.  Included files are trusted
+  input: there is no sandboxing.  ``load(fp)`` uses the file's directory; for
   ``loads(text)`` pass ``base=``.
 
 Rejected with a line-numbered error: tabs for indentation, anchors/aliases/
@@ -75,7 +80,7 @@ _COMMENT = re.compile(r" #")
 _COLON = re.compile(r":(?:[ \t]|$)")
 _DOC_MARK = re.compile(r"(?:---|\.\.\.)(?:[ \t]|$)")
 _PLAIN_BAD_START = set("[]{}&*!|>'\"%@`#,")
-_INCLUDE = re.compile(r" *#include +(\S.*?) *$")
+_PRAGMA = re.compile(r"#\+([a-z][a-z0-9-]*)(?: +(\S.*?))? *$")
 _MAX_INCLUDES = 1000
 
 
@@ -87,14 +92,14 @@ _MAX_INCLUDES = 1000
 def loads(text, base=None):
     """Parse a document into nested ``dict`` / ``list`` / ``str``.
 
-    ``base`` is the directory that ``#include`` paths are relative to; without
-    it, ``#include`` is an error.
+    ``base`` is the directory that ``#+include`` paths are relative to; without
+    it, ``#+include`` is an error.
     """
     return _Parser(_prepare(text), base).document()
 
 
 def load(fp):
-    """Like :func:`loads`, reading text from a file object.  ``#include``
+    """Like :func:`loads`, reading text from a file object.  ``#+include``
     paths are relative to the file's directory when it has a name."""
     name = getattr(fp, "name", None)
     base = os.path.dirname(os.path.abspath(name)) if isinstance(name, str) else None
@@ -129,7 +134,7 @@ class _Parser:
         self.lines = lines
         self.base = base
         # (file, line number) of every line; kept in step with ``lines`` when
-        # an #include splices text in, so errors name the right place
+        # a #+include splices text in, so errors name the right place
         self.origin = [(None, n) for n in range(1, len(lines) + 1)]
         self.includes = 0
         self.i = 0
@@ -141,13 +146,24 @@ class _Parser:
         file, n = self.origin[i]
         return MiniFormatError(msg, n, self.lines[i], file)
 
+    def pragma(self, content):
+        m = _PRAGMA.match(content)
+        if not m:
+            raise self.err("malformed pragma (expected '#+name args', name in a-z)")
+        name, arg = m.groups()
+        if name != "include":
+            raise self.err("unknown pragma '#+%s'" % name)
+        if not arg:
+            raise self.err("#+include needs a path")
+        self.include(arg)
+
     def include(self, name):
-        """Replace the #include line at self.i by the named file's lines."""
+        """Replace the #+include line at self.i by the named file's lines."""
         i = self.i
         file = self.origin[i][0]
         base = os.path.dirname(file) if file else self.base
         if base is None:
-            raise self.err("#include needs a base directory (pass base= to loads)")
+            raise self.err("#+include needs a base directory (pass base= to loads)")
         self.includes += 1
         if self.includes > _MAX_INCLUDES:
             raise self.err("too many includes (is there a loop?)")
@@ -171,9 +187,9 @@ class _Parser:
     def skip(self):
         """Advance to the next structural line; return its index or None."""
         while self.i < len(self.lines) and _is_blank(self.lines[self.i]):
-            m = _INCLUDE.match(self.lines[self.i])
-            if m:
-                self.include(m.group(1))  # splices; look at the same index again
+            content = self.lines[self.i].lstrip(" ")
+            if content.startswith("#+") and content[2:3] not in ("", " ", "\t"):
+                self.pragma(content)  # may splice; look at the same index again
             else:
                 self.i += 1
         if self.i >= len(self.lines):

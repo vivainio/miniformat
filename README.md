@@ -7,7 +7,7 @@ to miniformat (see below). The loader is a single stdlib-only Python file you
 can copy into your project.
 
 Two things are miniformat's own: **every scalar is a string** (`no`, `8080` and
-`1.10` stay exactly as written, no Norway problem), and `#include` pulls in
+`1.10` stay exactly as written, no Norway problem), and `#+include` pulls in
 other files. Convert strings on the consumer side:
 
 ```python
@@ -78,8 +78,8 @@ $ miniformat --fmt app.yaml    # print the canonical form (comments are dropped)
 Use **`.yml` or `.yaml`**, like any other YAML file. There is no special
 extension, on purpose: since any YAML parser can read the files, editors,
 syntax highlighting, schema tools and CI linters pick them up as they are.
-`#include` paths are written with the real file names too
-(`#include db.yaml`).
+`#+include` paths are written with the real file names too
+(`#+include db.yaml`).
 
 ## The format
 
@@ -142,55 +142,64 @@ Only `str`, `dict` (string keys) and `list`/`tuple` can be written; convert
 numbers and bools with `str()` first. Output is deterministic and
 `loads(dumps(x)) == x`. Lone surrogates can't be written (`ValueError`).
 
-## Includes
+## Pragmas and includes
 
-A line of its own that reads `#include path` is just a comment to any YAML
-parser. Here it is replaced by the text of that file, **indented to the
-column of the `#include` line**, so the same file can fill a whole document, a
-map, or a list:
+`#+` immediately followed by a character (no space) is **reserved**: a line of
+its own that starts that way is a *pragma*. To a YAML parser it is just a
+comment; miniformat gives it a meaning. Today there is one pragma:
+
+### `#+include path`
+
+The line is replaced by the text of that file, **indented to the column of the
+`#+include` line**, so the same file can fill a whole document, a map, or a
+list:
 
 ```yaml
 # app.yaml
 name: my-app
 db:
-  #include db.yaml        # db.yaml's entries become the children of db
+  #+include db.yaml
 servers:
   - a
-  #include more-servers.yaml
+  #+include more-servers.yaml
 ```
 
-- Paths are relative to the including file, so nested includes work.
-  `load(f)` uses the file's directory; `loads(text, base=dir)` is needed to
-  use includes with a string (otherwise `#include` is an error).
+- The path is the rest of the line (no trailing comment). Paths are relative
+  to the including file, so nested includes work. `load(f)` uses the file's
+  directory; `loads(text, base=dir)` is needed to use includes with a string
+  (otherwise `#+include` is an error).
 - It is plain text substitution: duplicate keys are errors, a list can't be
   included into a map, and there is no overriding or merging.
 - Included files are trusted input: there is no sandboxing of paths.
 - Errors name the right file and line, e.g. `db.yaml: line 3: duplicate key 'a'`.
-- Only the exact form `#include path` on its own line counts. `# include x`
-  (space after `#`), `#included`, a trailing `a: 1 #include x`, and anything
-  inside a quoted string or a `|` block are ordinary text.
 - A plain YAML parser ignores the line, so it sees the file without the
   included parts.
 
+### The reserved `#+` namespace
+
+- **Unknown or malformed pragmas are errors**, with a line number: `#+inlcude
+  x.yaml` (a typo), `#+Include x.yaml` (names are lowercase), `#+include`
+  (no path). A typo can't silently drop part of your config, and an older
+  loader that meets a newer pragma fails instead of misreading the file.
+- **`#+` followed by a space is still free.** `#+ like this`, a bare `#+`, and
+  every other comment (`# text`, `#TODO`, `#include <x.h>`) are ordinary
+  comments. Only `#+x...` is reserved.
+- A pragma must be on a line of its own. `a: 1 #+include x`, and anything
+  inside a quoted string or a `|` block, is ordinary text.
+
 ## Future additions
 
-miniformat reserves the right to add features like `#include`: ones that
-don't break YAML syntax (so any YAML parser can still parse the file) but do
-change what a file means to miniformat. They will be specially formed comments
-or other constructs YAML already accepts, never new syntax that a YAML parser
-would reject. New ones will be listed in this README and shipped with fixtures
-in `tests/cases`.
-
-To stay safe, write ordinary comments with a space after the `#` (`# like
-this`). A comment that starts with `#` immediately followed by a word, like
-`#include`, may get a meaning in a later version. Today `#include` is the only
-one; any other `#word` line is still just a comment.
+miniformat reserves the right to add more pragmas like `#+include`: they don't
+break YAML syntax (any YAML parser can still parse the file) but do change
+what a file means to miniformat. They are always `#+name`, never new syntax a
+YAML parser would reject. New ones will be listed in this README and shipped
+with fixtures in `tests/cases`.
 
 ## What "YAML-compatible" means
 
 The promise is about syntax: any YAML parser can parse a miniformat file.
 Meaning is not promised: a YAML parser types scalars its own way (`no`
-becomes `False`, `8080` an int, `key:` `None`), and ignores `#include`. For
+becomes `False`, `8080` an int, `key:` `None`), and ignores `#+` pragmas. For
 documents without includes, the tests also check that PyYAML (with implicit
 typing turned off) reads the same structure, on every fixture and on
 hundreds of thousands of random and mutated documents. The fixtures in

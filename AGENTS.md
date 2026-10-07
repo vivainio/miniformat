@@ -4,13 +4,13 @@ Guidelines for AI agents working on this codebase.
 
 ## What this is
 
-`miniformat` is a small, strict config format with YAML syntax: every scalar is a string, and `#include` pulls in other files. Two rules shape every change:
+`miniformat` is a small, strict config format with YAML syntax: every scalar is a string, and `#+include` pulls in other files. Two rules shape every change:
 
-1. **Everything the loader accepts must parse as YAML.** That is the one promise made to users (`#include` is just a comment to a YAML parser). Matching YAML's *meaning* is not promised, but without includes the PyYAML cross-check in the tests keeps the structure identical, so a mismatch there is worth a look.
+1. **Everything the loader accepts must parse as YAML.** That is the one promise made to users (`#+include` is just a comment to a YAML parser). Matching YAML's *meaning* is not promised, but without includes the PyYAML cross-check in the tests keeps the structure identical, so a mismatch there is worth a look.
 2. **`miniformat/mfloader.py` must stay a single stdlib-only file** (`json`, `os`, `re` only; no relative imports, no CLI). People vendor it by copying that one file.
 3. **`miniformat/__init__.py` stays empty** (a docstring only), so any subset of the files can be copied elsewhere. `mfdumper.py` may import only `.mfloader`; `cli.py` may import only `.mfloader` and `.dumper`. `tests/test_vendoring.py` enforces all of this.
 
-New features may add semantics (like `#include` does) but must never make a file unparseable by a YAML parser: use specially formed comments or constructs YAML already accepts. Each addition needs a README entry, fixtures in `tests/cases`, and a check that a YAML parser still parses the files that use it. Don't give `#word` comments other than documented pragmas any meaning (they must stay plain comments).
+New features may add semantics (like `#+include` does) but must never make a file unparseable by a YAML parser. Add them as pragmas: `#+name args` on a line of its own. `#+` immediately followed by a non-space character is reserved for that, so unknown or malformed pragmas are errors; every other comment (including `#+` alone or `#+ text`, `#TODO`, `#include`) must stay a plain comment. Each new pragma needs a README entry, fixtures in `tests/cases`, and a check that a YAML parser still parses files that use it.
 
 Users write `from miniformat import mfloader` / `from miniformat import mfdumper`.
 
