@@ -22,9 +22,11 @@ host = mfloader.get(cfg, "servers.0.host")  # lists are indexed by number
 ## Why
 
 - **YAML is the only reasonably readable syntax that also nests well.** JSON is
-  noisy (quotes, commas, no comments), INI is flat, and TOML gets awkward as
-  soon as the data nests. Config files are for people to read and edit, and
-  YAML is the one that stays pleasant at depth.
+  noisy (quotes, commas, no comments), INI is flat, and TOML turns into a
+  verbose mess as soon as the data nests (repeated `[a.b.c]` headers,
+  `[[arrays of tables]]`); even XML is easier to read at depth. Config files
+  are for people to read and edit, and YAML is the one that stays pleasant at
+  depth.
 - **But depending on PyYAML is annoying**, especially when it would be your
   only dependency: a package to install, pin and audit just to read one file.
   The loader here is a single stdlib-only file you can copy into your project.
