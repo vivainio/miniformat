@@ -1,4 +1,4 @@
-"""miniformat -- a strict, tiny subset of YAML where every scalar is a string.
+"""miniformat -- a tiny, strict config format with YAML syntax.
 
 ``loader.py`` is self-contained and meant to be vendored on its own;
 ``dumper.py`` is the optional writer.

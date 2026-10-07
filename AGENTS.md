@@ -4,9 +4,9 @@ Guidelines for AI agents working on this codebase.
 
 ## What this is
 
-`miniformat` is a strict subset of YAML where every scalar is a string. Two rules shape every change:
+`miniformat` is a small, strict config format with YAML syntax: every scalar is a string, and `#include` pulls in other files. Two rules shape every change:
 
-1. **Everything the loader accepts must parse as YAML** (`#include` is just a comment to YAML). Without includes it should also read as the same structure, which the PyYAML cross-check in the tests enforces.
+1. **Everything the loader accepts must parse as YAML.** That is the one promise made to users (`#include` is just a comment to a YAML parser). Matching YAML's *meaning* is not promised, but without includes the PyYAML cross-check in the tests keeps the structure identical, so a mismatch there is worth a look.
 2. **`miniformat/loader.py` must stay a single stdlib-only file** (`json`, `re` only; no relative imports, no CLI). People vendor it by copying that one file. Don't make it depend on the dumper, the CLI or `__init__`.
 
 `dumper.py` is the optional writer and depends only on `loader.py`. `cli.py` is the command line.

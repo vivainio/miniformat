@@ -1,12 +1,14 @@
 # miniformat
 
-A strict, tiny subset of YAML for config files. **Every file it accepts is
-also valid YAML**, so editors, highlighting and any YAML parser can still read
-it. The loader is a single stdlib-only Python file you can copy into your project.
+A tiny, strict config format with YAML syntax. **The promise: any YAML parser
+can parse a miniformat file**, so editors, highlighting and existing tooling
+keep working. That is all it promises about YAML; what the file *means* is up
+to miniformat (see below). The loader is a single stdlib-only Python file you
+can copy into your project.
 
-The one semantic difference: **every scalar is a string.** `no`, `8080` and
-`1.10` stay exactly as written (no Norway problem). Convert on the consumer
-side:
+Two things are miniformat's own: **every scalar is a string** (`no`, `8080` and
+`1.10` stay exactly as written, no Norway problem), and `#include` pulls in
+other files. Convert strings on the consumer side:
 
 ```python
 import miniformat as mf
@@ -142,7 +144,7 @@ servers:
 - A plain YAML parser ignores the line, so it sees the file without the
   included parts.
 
-## Compatibility with YAML
+## What "YAML-compatible" means
 
 The promise is about syntax: any YAML parser can parse a miniformat file.
 Meaning is not promised: a YAML parser types scalars its own way (`no`

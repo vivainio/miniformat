@@ -1,14 +1,16 @@
-"""miniformat -- a strict, tiny subset of YAML.  Single file, stdlib only.
+"""miniformat -- a tiny, strict config format with YAML syntax.  Single file,
+stdlib only.
 
 This is the loader.  It is self-contained: to vendor it, copy just this file
 (``import loader`` / rename it as you like).  The optional writer is dumper.py.
 
-Every document this module accepts is also valid YAML, so any YAML parser
-(and any editor's YAML highlighting) can read it.  The difference is meaning:
-here *every scalar is a string*.  ``no``, ``8080`` and ``1.10`` stay as
-written; interpret them on the consumer side with ``get(data, "a.b", int)``.
+The promise: any YAML parser can parse a document this module accepts (and
+any editor's YAML highlighting works on it).  What it *means* is up to this
+module: *every scalar is a string* (``no``, ``8080`` and ``1.10`` stay as
+written; interpret them on the consumer side with ``get(data, "a.b", int)``)
+and ``#include`` is expanded.
 
-The subset
+The format
 ----------
 * block maps (``key: value``) and block lists (``- item``), nested by
   indenting with spaces (tabs are an error);
@@ -46,7 +48,7 @@ __all__ = ["loads", "load", "get", "MiniFormatError"]
 
 
 class MiniFormatError(ValueError):
-    """Raised for input outside the subset.
+    """Raised for input outside the format.
 
     ``.line`` is 1-based (or None); ``.file`` names an included file (or None
     for the main document).

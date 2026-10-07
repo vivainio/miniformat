@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "miniformat"
 dynamic = ["version"]
-description = "A strict, tiny subset of YAML where every scalar is a string. The loader is one vendorable file."
+description = "A tiny, strict config format with YAML syntax: any YAML parser can parse it, every scalar is a string. The loader is one vendorable file."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
