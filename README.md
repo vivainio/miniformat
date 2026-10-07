@@ -25,6 +25,8 @@ host = mf.get(cfg, "servers.0.host")  # lists are indexed by number
 pip install miniformat
 ```
 
+Python 3.10 or newer.
+
 **Vendoring:** the loader is one stdlib-only file with no relative imports.
 Copy [`miniformat/loader.py`](miniformat/loader.py) into your project under any
 name and import it; it needs nothing else:

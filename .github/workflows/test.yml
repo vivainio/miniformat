@@ -6,7 +6,7 @@ on:
       python-versions:
         description: JSON array of Python versions to test
         type: string
-        default: '["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]'
+        default: '["3.10", "3.11", "3.12", "3.13", "3.14"]'
 
 jobs:
   lint:
@@ -36,11 +36,8 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
-      # The tests import the checkout directly (pythonpath in pyproject.toml), so
-      # the package is not built here: its build backend needs a newer Python
-      # than the oldest one we test on.
       - name: Run tests
-        run: uv run --no-project --python ${{ matrix.python-version }} --with pytest --with pyyaml pytest -v
+        run: uv run --python ${{ matrix.python-version }} --group dev pytest -v
 
   vendored-loader:
     # the loader must work as a lone file, with nothing but the stdlib
