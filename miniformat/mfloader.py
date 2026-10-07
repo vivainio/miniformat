@@ -29,8 +29,8 @@ The format
 
   ``#+include path`` is replaced by the text of that file (relative to the
   including file), indented to the ``#`` column.  A path with ``*``, ``?`` or
-  ``[`` is a glob (``conf.d/*.yaml``): every matching file, sorted by path;
-  matching nothing is fine.  Included files are trusted input: there is no
+  ``[`` is a glob (``conf.d/*.yaml``, ``**`` for any depth): every matching
+  file, sorted by path; matching nothing is fine.  Included files are trusted input: there is no
   sandboxing.  ``load(fp)`` uses the file's directory; for
   ``loads(text)`` pass ``base=``.
 
@@ -170,7 +170,7 @@ class _Parser:
             raise self.err("#+include needs a base directory (pass base= to loads)")
         is_glob = any(c in pattern for c in "*?[")
         if is_glob:  # no match is fine: an empty conf.d is not an error
-            found = glob.glob(os.path.join(glob.escape(base), pattern))
+            found = glob.glob(os.path.join(glob.escape(base), pattern), recursive=True)
             paths = sorted(p for p in found if os.path.isfile(p))
         else:
             paths = [os.path.join(base, pattern)]

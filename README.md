@@ -197,7 +197,8 @@ plugins:
   (not directories, not dotfiles), sorted by path (plain string order, so
   `10-x.yaml` comes before `2-y.yaml`). Each file is placed at the pragma's
   indent, one after the other. Matching nothing is fine, so an empty
-  `conf.d/` works. There is no `**`.
+  `conf.d/` works. `**` matches any depth of directories, so
+  `conf.d/**/*.yaml` also picks up files in subdirectories.
 - It is plain text substitution: duplicate keys are errors, a list can't be
   included into a map, and there is no overriding or merging.
 - Included files are trusted input: there is no sandboxing of paths.

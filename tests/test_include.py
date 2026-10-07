@@ -516,3 +516,47 @@ def test_glob_include_cap_counts_every_file(tmp_path):
 def test_file_with_a_glob_pragma_is_still_plain_yaml(tmp_path):
     text = "a: 1\n#+include conf.d/*.yaml\nb:\n  #+include more/*.yaml\n  c: 2\n"
     assert yaml.safe_load(text) == {"a": 1, "b": {"c": 2}}
+
+
+def test_double_star_matches_any_depth_including_none(tmp_path):
+    write(
+        tmp_path,
+        {
+            "main.yaml": "#+include c/**/*.yaml\n",
+            "c/top.yaml": "top: 1\n",
+            "c/a/mid.yaml": "mid: 2\n",
+            "c/a/b/deep.yaml": "deep: 3\n",
+            "c/a/skip.txt": "no: 1\n",
+            "c/.hidden/h.yaml": "h: 1\n",
+        },
+    )
+    d = load_file(tmp_path / "main.yaml")
+    # c/a/b/deep.yaml < c/a/mid.yaml < c/top.yaml (full path string order)
+    assert list(d) == ["deep", "mid", "top"]
+
+
+def test_double_star_order_is_by_full_path_string(tmp_path):
+    write(
+        tmp_path,
+        {
+            "main.yaml": "#+include c/**/*.yaml\n",
+            "c/a.yaml": "a: 1\n",
+            "c/a/x.yaml": "ax: 1\n",
+            "c/b.yaml": "b: 1\n",
+            "c/a/z/y.yaml": "azy: 1\n",
+        },
+    )
+    # '.' sorts before '/', so c/a.yaml < c/a/x.yaml < c/a/z/y.yaml < c/b.yaml
+    assert list(load_file(tmp_path / "main.yaml")) == ["a", "ax", "azy", "b"]
+
+
+def test_plain_star_does_not_descend(tmp_path):
+    write(
+        tmp_path,
+        {
+            "main.yaml": "#+include c/*.yaml\n",
+            "c/a.yaml": "a: 1\n",
+            "c/s/b.yaml": "b: 1\n",
+        },
+    )
+    assert load_file(tmp_path / "main.yaml") == {"a": "1"}
