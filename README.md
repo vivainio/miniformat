@@ -39,6 +39,42 @@ cfg["db"].get("timeout", "30")  # a default, with the plain dict method
 int(cfg["db"]["port"])  # 5432: you convert the string where you use it
 ```
 
+### Typed values with pydantic
+
+To get real `int`s and `bool`s without converting by hand, validate the result
+against a [pydantic](https://docs.pydantic.dev/) model. Its default (lax) mode
+coerces strings: `"5432"` becomes `5432`, `"yes"` becomes `True`. pydantic is
+not a dependency of miniformat; this is just a recipe.
+
+```python
+from pydantic import BaseModel, ConfigDict
+from miniformat import mfloader
+
+
+class Db(BaseModel):
+    port: int
+
+
+class Server(BaseModel):
+    host: str
+
+
+class App(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # reject unknown keys
+
+    name: str
+    db: Db
+    debug: bool = False
+    servers: list[Server]
+
+
+app = App.model_validate(mfloader.loads(open("app.yaml").read()))
+app.db.port  # 5432 (an int)
+app.debug  # True
+```
+
+Plain `@dataclass` types work too, via `pydantic.TypeAdapter(MyDataclass).validate_python(cfg)`.
+
 ## Why
 
 - **YAML is the only reasonably readable syntax that also nests well.** JSON is
