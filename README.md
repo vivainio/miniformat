@@ -1,7 +1,7 @@
 # miniformat
 
-A tiny, strict config format with YAML syntax. **The promise: any YAML parser
-can parse a miniformat file**, so editors, highlighting and existing tooling
+miniformat is a tiny, strict config format with YAML syntax. **The promise: any
+YAML parser can parse a miniformat file**, so editors, highlighting and existing tooling
 keep working. That is all it promises about YAML; what the file *means* is up
 to miniformat (see below). The loader is a single stdlib-only Python file you
 can copy into your project.
@@ -133,7 +133,7 @@ $ miniformat --fmt app.yaml    # print the canonical form (comments are dropped)
 
 ## File names
 
-Use **`.yml` or `.yaml`**, like any other YAML file. There is no special
+miniformat files use **`.yml` or `.yaml`**. There is no special
 extension, on purpose: since any YAML parser can read the files, editors,
 syntax highlighting, schema tools and CI linters pick them up as they are.
 `#+include` paths are written with the real file names too
@@ -352,7 +352,7 @@ choice: !If
 
 ### Tags
 
-A value may start with a YAML tag: `!Name`, a space, then the value. It loads as
+A value may start with a tag (`!Name`, as in YAML): the tag, a space, then the value. It loads as
 a one-key map, `{"!Name": value}`. This keeps tag-heavy files such as AWS
 CloudFormation templates readable without giving up "every scalar is a string":
 
@@ -467,7 +467,7 @@ what a file means to miniformat. They are always `#+name`, never new syntax a
 YAML parser would reject. New ones will be listed in this README and shipped
 with fixtures in `tests/cases`.
 
-## What "YAML-compatible" means
+## How miniformat relates to YAML
 
 The promise is about syntax: any YAML parser can parse a miniformat file.
 Meaning is not promised: a YAML parser types scalars its own way (`no`
@@ -477,6 +477,15 @@ typing turned off) reads the same structure, on every fixture and on
 hundreds of thousands of random and mutated documents. The fixtures in
 `tests/cases` are plain files (document + expected JSON, or expected error
 line and message), so ports to other languages can run the same suite.
+
+## JSON is not miniformat
+
+JSON is not valid miniformat, even though YAML parsers read most JSON. The
+loader rejects flow collections other than the empty `{}` and `[]`, so
+`{"a": "b"}` and `["a"]` are errors, as is a bare `"s"` (a document must be a
+map or a list in block style). Numbers, booleans and `null` can't appear
+either: every scalar is a string. Convert JSON to miniformat by loading it
+and writing it with `mfdumper.dumps` (after turning the scalars into strings).
 
 ## Development
 
