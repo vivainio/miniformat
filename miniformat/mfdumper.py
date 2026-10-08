@@ -16,9 +16,10 @@ from .mfloader import (
     _COMMENT,
     _PLAIN_BAD_START,
     _TAG,
+    loads,
 )
 
-__all__ = ["dumps", "dump"]
+__all__ = ["dumps", "dump", "flatten"]
 
 
 _ESC = {
@@ -153,3 +154,9 @@ def dumps(obj):
 
 def dump(obj, fp):
     fp.write(dumps(obj))
+
+
+def flatten(text, base=None):
+    """Return ``text`` with every ``#+include`` expanded (relative to ``base``),
+    as canonical text that needs no other files.  Comments are dropped."""
+    return dumps(loads(text, base))

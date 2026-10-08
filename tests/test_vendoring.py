@@ -178,4 +178,4 @@ def test_public_names():
     assert set(mfloader.__all__) == {"loads", "load", "MiniFormatError"}
     from miniformat import mfdumper
 
-    assert set(mfdumper.__all__) == {"dumps", "dump"}
+    assert set(mfdumper.__all__) == {"dumps", "dump", "flatten"}

@@ -401,6 +401,10 @@ Only `str`, `dict` (string keys) and `list`/`tuple` can be written; convert
 numbers and bools with `str()` first. Output is deterministic and
 `loads(dumps(x)) == x`. Lone surrogates can't be written (`ValueError`).
 
+`mfdumper.flatten(text, base)` loads `text` (with `#+include` resolved against
+`base`) and returns it as canonical text with no includes left, for sending a
+document somewhere the included files aren't.
+
 ## Pragmas and includes
 
 `#+` immediately followed by a character (no space) is **reserved**: a line of

@@ -560,3 +560,14 @@ def test_plain_star_does_not_descend(tmp_path):
         },
     )
     assert load_file(tmp_path / "main.yaml") == {"a": "1"}
+
+
+def test_flatten_expands_includes(tmp_path):
+    from miniformat.mfdumper import flatten
+
+    write(tmp_path, {"a.yaml": "x: 1\n#+include b.yaml\n", "b.yaml": "y: 2\n"})
+    text = (tmp_path / "a.yaml").read_text()
+    flat = flatten(text, str(tmp_path))
+    assert flat == "x: 1\ny: 2\n"
+    assert "#+include" not in flat
+    assert mf.loads(flat) == mf.loads(text, str(tmp_path))
