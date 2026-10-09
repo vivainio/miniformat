@@ -13,7 +13,7 @@ def test_error_is_a_valueerror_with_attributes():
         mf.loads("a: 1\nb: [x]\n")
     err = e.value
     assert isinstance(err, mf.MiniFormatError)
-    assert err.line == 2 and "flow" in err.msg
+    assert err.line == 2 and "JSON" in err.msg
     assert "line 2:" in str(err) and "b: [x]" in str(err)
 
 

@@ -18,7 +18,11 @@ The format
 * tab characters only appear in comments and ``|`` blocks (``\\t`` in quotes);
 * scalars: plain (``text``) or double-quoted with JSON escapes (``"a\\tb"``);
 * multi-line text: ``|`` literal blocks only (clip chomping: one final newline);
-* ``{}`` and ``[]`` as the only flow syntax, for empty containers;
+* ``{}`` and ``[]`` for empty containers, and as the only other flow syntax a
+  value (after ``key:`` or ``-``) may be one line of JSON whose leaves are all
+  strings: ``["a", "b"]``, ``{"k": ["v"]}``, ``[{"n": "x"}]``.  No comment may
+  follow it, and (so that YAML parsers read it the same) no surrogate
+  ``\\u`` escapes and no duplicate keys;
 * a value may start with a tag, ``key: !Name value`` (the value is anything
   above, including a ``|`` block or a nested map/list), which loads as the
   one-key map ``{"!Name": value}``.  One tag per value, none on keys;
@@ -39,8 +43,9 @@ The format
 
 Rejected with a line-numbered error: tabs for indentation, anchors/aliases,
 ``!!`` tags, ``>`` folded scalars, chomp indicators, single quotes, other flow
-syntax, duplicate keys, multiple documents, ``a: b: c`` (quote it), and
-multi-line plain scalars.
+syntax (JSON numbers, booleans, ``null``, multi-line JSON, flow after a tag),
+duplicate keys, multiple documents, ``a: b: c`` (quote it), and multi-line plain
+scalars.
 
 API: ``loads``, ``load``, ``MiniFormatError`` (``.file``, ``.line``).
 (``dumps`` / ``dump`` are in mfdumper.py.)
@@ -82,6 +87,7 @@ _BAD_CHAR = re.compile(
     "[^\t\n\x20-\x7e\xa0-\u2027\u202a-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]"
 )
 _QUOTED = re.compile(r'"(?:[^"\\]|\\.)*"')
+_ESCAPE = re.compile(r"\\(?:u([0-9a-fA-F]{4})|.)")
 _COMMENT = re.compile(r" #")
 _COLON = re.compile(r":(?:[ \t]|$)")
 _DOC_MARK = re.compile(r"(?:---|\.\.\.)(?:[ \t]|$)")
@@ -312,7 +318,7 @@ class _Parser:
             if (
                 rest
                 and not _is_blank(rest)
-                and rest[0] not in "|!"
+                and rest[0] not in "|![{"
                 and self.split_entry(rest) is not None
             ):
                 # '- key: v' -> rewrite as a map line indented under the dash
@@ -324,14 +330,14 @@ class _Parser:
 
     # -- values ----------------------------------------------------------------
 
-    def value(self, rest, parent):
+    def value(self, rest, parent, tagged=False):
         """Value after 'key:' or '-'; the current line is self.i."""
         rest = rest.strip(" ")
         tag = _TAG.match(rest)
         if tag:
             if _TAG.match(rest[tag.end() :].lstrip(" ")):
                 raise self.err("a value can have only one tag")
-            return {tag.group(): self.value(rest[tag.end() :], parent)}
+            return {tag.group(): self.value(rest[tag.end() :], parent, True)}
         if rest == "" or rest[0] == "#":
             self.i += 1
             nested = self.block(parent)
@@ -340,11 +346,11 @@ class _Parser:
             if _split_comment(rest).rstrip(" ") != "|":
                 raise self.err("only a plain '|' block scalar header is supported")
             return self.block_scalar(parent)
-        v = self.inline(rest)
+        v = self.inline(rest, tagged)
         self.i += 1
         return v
 
-    def inline(self, rest):
+    def inline(self, rest, tagged=False):
         if rest[0] == '"':
             m = _QUOTED.match(rest)
             if not m:
@@ -358,9 +364,58 @@ class _Parser:
             return {}
         if cut == "[]":
             return []
+        if rest[0] in "[{":
+            if tagged:
+                raise self.err(
+                    "a tag cannot be followed by a flow collection; "
+                    "put the value on indented lines"
+                )
+            return self.json_flow(rest)
         s = cut.rstrip("\t ")
         self.check_plain(s)
         return s
+
+    def json_flow(self, rest):
+        """One line of JSON in which every leaf is a string."""
+        for m in _QUOTED.finditer(rest):
+            for esc in _ESCAPE.finditer(m.group()):
+                code = esc.group(1)
+                if code and 0xD800 <= int(code, 16) <= 0xDFFF:
+                    raise self.err("surrogate \\u escapes are not supported")
+
+        def pairs(items):
+            d = {}
+            for k, v in items:
+                if k in d:
+                    raise ValueError("duplicate key %r" % k)
+                d[k] = v
+            return d
+
+        try:
+            tree, end = json.JSONDecoder(object_pairs_hook=pairs).raw_decode(rest)
+        except json.JSONDecodeError as e:
+            raise self.err("bad JSON (%s)" % e.msg) from None
+        except ValueError as e:
+            raise self.err(str(e)) from None
+        except RecursionError:
+            raise self.err("JSON is nested too deeply") from None
+        tail = rest[end:].strip(" ")
+        if tail.startswith("#"):
+            raise self.err("a comment cannot follow a JSON value")
+        if tail:
+            raise self.err("unexpected text after JSON value")
+        stack = [tree]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, dict):
+                stack += node.values()
+            elif isinstance(node, list):
+                stack += node
+            elif not isinstance(node, str):
+                raise self.err(
+                    "JSON values must be strings (quote %s)" % json.dumps(node)
+                )
+        return tree
 
     def unquote(self, token):
         try:
@@ -372,8 +427,8 @@ class _Parser:
         return s
 
     _HINTS = {
-        "[": "flow syntax is not supported (only [] and {})",
-        "{": "flow syntax is not supported (only [] and {})",
+        "[": "flow syntax is only supported as a one-line JSON value",
+        "{": "flow syntax is only supported as a one-line JSON value",
         "&": "anchors are not supported",
         "*": "aliases are not supported",
         "!": "a tag is !Name, a space, then the value (no !!, none on keys)",

@@ -159,7 +159,8 @@ servers:
   - name: a               # list of maps
     ip: "1.2.3.4"
   - name: b
-    opts: {}              # {} and [] are the only flow syntax
+    opts: {}              # {} and [] for empty containers
+    tags: ["web", "db"]   # or one line of JSON, strings only
 empty:                    # loads as ""
 ```
 
@@ -172,6 +173,12 @@ Rules:
   start with `[ ] { } & * ! | > ' " % @ \` # ,` (or `- `, `? `, `: `), and may not contain
   `: `, ` #` or a tab. Quote them instead. Only space and tab count as
   whitespace (a non-breaking space is an ordinary character).
+- A value may be one line of JSON in which every leaf is a string: `["a", "b"]`,
+  `{"k": "v"}`, `[{"name": "a", "tags": ["x"]}]`. Numbers, `true`, `false` and
+  `null` are errors (quote them), as are a trailing `# comment`, a value that
+  spans lines, duplicate keys and `\uD800`-style surrogate escapes (YAML
+  parsers disagree on them). It works after `key:` and `-`, not at the document
+  root or after a tag.
 - Multi-line text uses `|` only (clip chomping).
 - Root is a map or a list. Empty documents are an error.
 
@@ -179,7 +186,7 @@ A `|` block that ends at the end of the file without a final newline has no
 trailing newline either, exactly as in YAML.
 
 Rejected with a line-numbered error: anchors, aliases, `!!` tags, tags on keys, `>` folded scalars,
-chomp indicators, single quotes, flow syntax other than `{}`/`[]`, duplicate
+chomp indicators, single quotes, flow syntax other than `{}`/`[]` and one-line string-only JSON, duplicate
 keys, multiple documents, `a: b: c`, multi-line plain scalars.
 
 ```
@@ -478,14 +485,14 @@ hundreds of thousands of random and mutated documents. The fixtures in
 `tests/cases` are plain files (document + expected JSON, or expected error
 line and message), so ports to other languages can run the same suite.
 
-## JSON is not miniformat
+## JSON and miniformat
 
-JSON is not valid miniformat, even though YAML parsers read most JSON. The
-loader rejects flow collections other than the empty `{}` and `[]`, so
-`{"a": "b"}` and `["a"]` are errors, as is a bare `"s"` (a document must be a
-map or a list in block style). Numbers, booleans and `null` can't appear
-either: every scalar is a string. Convert JSON to miniformat by loading it
-and writing it with `mfdumper.dumps` (after turning the scalars into strings).
+A whole JSON document is not valid miniformat, even though YAML parsers read
+most JSON: the root must be a block map or list, and a bare `"s"` is an error.
+Inside a document, one line of JSON is fine as a value (see the rules above) as
+long as every leaf is a string, because every scalar is a string. Convert JSON
+to miniformat by loading it and writing it with `mfdumper.dumps` (after turning
+the scalars into strings).
 
 ## Development
 

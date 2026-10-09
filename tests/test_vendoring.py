@@ -80,7 +80,7 @@ def test_loader_has_no_import_time_side_effects(tmp_path):
 
 
 def test_loader_is_small():
-    assert len((PKG / "mfloader.py").read_text().splitlines()) < 500
+    assert len((PKG / "mfloader.py").read_text().splitlines()) < 550
 
 
 # -- the directory, in various states of completeness ------------------------------
