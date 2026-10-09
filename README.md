@@ -416,6 +416,52 @@ choice: !If
   tags, so register a constructor that returns `{tag: value}`; the tests do it
   with `add_multi_constructor("!", ...)` to check the structure still matches.
 
+## How it differs from YAML
+
+The promise is about syntax: any YAML parser can parse a miniformat file, and
+simple values mean the same in both (`port: 80`, `debug: true`). Meaning is not
+promised. The differences:
+
+**Meaning** (a YAML parser may read the same file differently):
+
+- **Narrower typing.** Only lowercase `true`, `false`, `null` and numbers in
+  JSON syntax are typed (YAML 1.2's "JSON schema"). YAML 1.1 parsers such as
+  PyYAML also type `yes`, `no`, `on`, `off`, `~`, `010` (octal), `0x1F`,
+  `1_000`, `12:30` and `2001-01-01`; miniformat keeps all of those as strings.
+  `True`, `NULL`, `+1`, `.5` and `1.` are strings too, and PyYAML reads `1e3`
+  as a string where miniformat reads the float 1000.0.
+- **An empty value is `""`.** `key:` is null in YAML.
+- **Keys are always strings.** `80: x` and `true: x` have the keys `"80"` and
+  `"true"`; YAML gives an int and a bool.
+- **64-bit limits.** An integer beyond 64 bits or a float that overflows stays a
+  string; YAML gives a big int or `inf`.
+- **Tags are data.** `!Name value` loads as `{"!Name": value}`; YAML passes the
+  tag to a constructor you register.
+- **`#+include` is miniformat's own.** To YAML it is a comment, so a YAML parser
+  does not follow it.
+
+**Syntax** (YAML allows these; miniformat rejects them with a line-numbered
+error):
+
+- anchors, aliases and `<<` merge keys
+- `!!` tags
+- `>` folded scalars and chomp indicators (`|-`, `|+`)
+- single-quoted strings
+- multiple documents
+- multi-line plain or quoted scalars
+- complex keys (a map or list as a key)
+- duplicate keys (YAML calls them undefined; PyYAML keeps the last)
+- tabs for indentation, and `a: b: c`
+- flow collections other than `{}`, `[]` and one line of JSON as a value (never
+  after a tag or at the document root)
+- a list at the same column as its key, and more than one space after `-`
+
+The tests check this: for documents without includes, PyYAML (with its implicit
+typing replaced by miniformat's rules) reads the same values on every fixture
+and on hundreds of thousands of random and mutated documents. The fixtures in
+`tests/cases` are plain files (document + expected JSON, or expected error line
+and message), so ports to other languages can run the same suite.
+
 ## Writing
 
 ```python
@@ -495,17 +541,6 @@ break YAML syntax (any YAML parser can still parse the file) but do change
 what a file means to miniformat. They are always `#+name`, never new syntax a
 YAML parser would reject. New ones will be listed in this README and shipped
 with fixtures in `tests/cases`.
-
-## How miniformat relates to YAML
-
-The promise is about syntax: any YAML parser can parse a miniformat file.
-Meaning is not promised: a YAML parser types scalars its own way (`no`
-becomes `False`, `010` an octal, `key:` `None`), and ignores `#+` pragmas. For
-documents without includes, the tests also check that PyYAML (with its implicit
-typing replaced by miniformat's rules) reads the same values, on every fixture and on
-hundreds of thousands of random and mutated documents. The fixtures in
-`tests/cases` are plain files (document + expected JSON, or expected error
-line and message), so ports to other languages can run the same suite.
 
 ## JSON and miniformat
 
