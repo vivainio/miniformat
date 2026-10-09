@@ -96,6 +96,7 @@ _PLAIN_BAD_START = set("[]{}&*!|>'\"%@`#,")
 _TAG = re.compile(r"![A-Za-z](?:[A-Za-z0-9_.:-]*[A-Za-z0-9_])?(?= |$)")
 _PRAGMA = re.compile(r"#\+([a-z][a-z0-9-]*)(?: +(\S.*?))? *$")
 _MAX_INCLUDES = 1000
+_MAX_JSON_DEPTH = 100
 
 
 # --------------------------------------------------------------------------
@@ -404,13 +405,15 @@ class _Parser:
             raise self.err("a comment cannot follow a JSON value")
         if tail:
             raise self.err("unexpected text after JSON value")
-        stack = [tree]
+        stack = [(tree, 1)]
         while stack:
-            node = stack.pop()
+            node, depth = stack.pop()
+            if isinstance(node, (dict, list)) and depth > _MAX_JSON_DEPTH:
+                raise self.err("JSON is nested too deeply")
             if isinstance(node, dict):
-                stack += node.values()
+                stack += [(v, depth + 1) for v in node.values()]
             elif isinstance(node, list):
-                stack += node
+                stack += [(v, depth + 1) for v in node]
             elif not isinstance(node, str):
                 raise self.err(
                     "JSON values must be strings (quote %s)" % json.dumps(node)
