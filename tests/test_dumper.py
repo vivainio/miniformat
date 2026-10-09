@@ -1,6 +1,6 @@
 import pytest
 
-from helpers import rand_root, rng, strload
+from helpers import rand_root, rng, same, typedload
 from miniformat import mfloader as mf
 from miniformat.mfdumper import dump, dumps
 
@@ -10,11 +10,12 @@ from miniformat.mfdumper import dump, dumps
     [
         ({}, "{}\n"),
         ([], "[]\n"),
-        ({"a": "1"}, "a: 1\n"),
+        ({"a": 1}, "a: 1\n"),
+        ({"a": "1"}, 'a: "1"\n'),
         ({"a": {"b": "c"}}, "a:\n  b: c\n"),
         ({"a": ["x", "y"]}, "a:\n  - x\n  - y\n"),
         (["x", "y"], "- x\n- y\n"),
-        ([{"a": "1", "b": "2"}, {"c": "3"}], "- a: 1\n  b: 2\n- c: 3\n"),
+        ([{"a": 1, "b": 2}, {"c": 3}], "- a: 1\n  b: 2\n- c: 3\n"),
         ([["a", "b"], ["c"]], "-\n  - a\n  - b\n-\n  - c\n"),
         ({"a": {}, "b": [], "c": ["z"]}, "a: {}\nb: []\nc:\n  - z\n"),
         ([{}, []], "- {}\n- []\n"),
@@ -32,16 +33,22 @@ from miniformat.mfdumper import dump, dumps
         ({"": "x"}, '"": x\n'),
         ({"a": "multi\nline\n"}, "a: |\n  multi\n  line\n"),
         ({"a": ["x\ny\n"]}, "a:\n  - |\n    x\n    y\n"),
-        ([{"k": "x\ny\n", "m": "1"}], "- k: |\n    x\n    y\n  m: 1\n"),
+        ([{"k": "x\ny\n", "m": 1}], "- k: |\n    x\n    y\n  m: 1\n"),
         ({"a": "\nlead\n"}, "a: |\n\n  lead\n"),
         ({"a": "x\n\ny\n"}, "a: |\n  x\n\n  y\n"),
         ({"a": {"b": {"c": "x\n"}}}, "a:\n  b:\n    c: |\n      x\n"),
         (
-            {"a": "no", "b": "8080", "c": "1.10"},
-            "a: no\nb: 8080\nc: 1.10\n",
-        ),  # plain: strings stay readable
+            {"a": "no", "b": "8080", "c": "1.10", "d": "yes", "e": "010"},
+            'a: no\nb: "8080"\nc: "1.10"\nd: yes\ne: 010\n',
+        ),  # plain unless it would read back as a number, bool or null
+        (
+            {"i": 80, "f": 1.5, "t": True, "n": None, "s": "true"},
+            'i: 80\nf: 1.5\nt: true\nn: null\ns: "true"\n',
+        ),
+        ([1, -2.5, False, None], "- 1\n- -2.5\n- false\n- null\n"),
+        ({"a": {"!Ref": 80}}, "a: !Ref 80\n"),
         ({"url": "http://x:80/a"}, "url: http://x:80/a\n"),
-        ({"z": "1", "a": "2"}, "z: 1\na: 2\n"),  # insertion order kept
+        ({"z": 1, "a": 2}, "z: 1\na: 2\n"),  # insertion order kept
         ({"é": "日本"}, "é: 日本\n"),
         ((("a", "b")), "- a\n- b\n"),
     ],
@@ -79,6 +86,13 @@ def test_canonical_output(obj, expected):
         (",x", '",x"'),
         ("'x", '"\'x"'),
         ('"x', '"\\"x"'),
+        ("1", '"1"'),
+        ("-5", '"-5"'),
+        ("1.10", '"1.10"'),
+        ("1e3", '"1e3"'),
+        ("true", '"true"'),
+        ("false", '"false"'),
+        ("null", '"null"'),
         ("a\tb", '"a\\tb"'),
         ("\ufeff", '"\\ufeff"'),
         ("x\ufeffy", '"x\\ufeffy"'),
@@ -108,9 +122,19 @@ def test_values_that_need_quotes(value, quoted):
         "a#b",
         "a b",
         "x[1]",
-        "1",
         "no",
-        "null",
+        "yes",
+        "~",
+        "010",
+        "0x1F",
+        "+1",
+        ".5",
+        "1.",
+        "True",
+        "NaN",
+        "1_000",
+        "9223372036854775808",
+        "1e999",
         "é",
         "a'b",
         'a"b',
@@ -135,10 +159,10 @@ def test_lone_surrogates_cannot_be_written(bad):
 
 
 def test_keys_are_quoted_like_values():
-    obj = {"a: b": "1", "- x": "2", "": "3", "multi\nline": "4", "ok key": "5"}
+    obj = {"a: b": 1, "- x": 2, "": 3, "multi\nline": 4, "ok key": 5}
     out = dumps(obj)
     assert out == '"a: b": 1\n"- x": 2\n"": 3\n"multi\\nline": 4\nok key: 5\n'
-    assert mf.loads(out) == obj
+    assert same(mf.loads(out), obj)
 
 
 def test_dumping_is_idempotent_on_loaded_text():
@@ -151,14 +175,14 @@ def test_dumping_is_idempotent_on_loaded_text():
 @pytest.mark.parametrize(
     "bad",
     [
-        {"a": 1},
-        {"a": None},
-        {"a": True},
-        {"a": 1.5},
         {"a": b"x"},
-        {"a": {"b": [1]}},
+        {"a": {"b": [b"y"]}},
         {"a": {1, 2}},
-        ["x", 3],
+        ["x", 2**63],
+        ["x", -(2**63) - 1],
+        {"a": float("nan")},
+        {"a": float("inf")},
+        {"a": -float("inf")},
         {1: "x"},
         {None: "x"},
         {("t",): "x"},
@@ -171,9 +195,11 @@ def test_non_string_leaves_and_keys_are_type_errors(bad):
 
 def test_type_error_names_the_path():
     with pytest.raises(TypeError, match=r"a\.b\[1\]"):
-        dumps({"a": {"b": ["ok", 5]}})
-    with pytest.raises(TypeError, match="str()"):
-        dumps({"a": 1})
+        dumps({"a": {"b": ["ok", 2**70]}})
+    with pytest.raises(TypeError, match="64 bits"):
+        dumps({"a": 2**64})
+    with pytest.raises(TypeError, match="finite"):
+        dumps({"a": float("inf")})
 
 
 @pytest.mark.parametrize("root", ["x", 1, None, 3.5, b"x"])
@@ -206,7 +232,7 @@ def test_deeply_nested_roundtrip():
     for i in range(60):
         obj = {"k": obj} if i % 2 else [obj]
     assert mf.loads(dumps(obj)) == obj
-    assert strload(dumps(obj)) == obj
+    assert same(typedload(dumps(obj)), obj)
 
 
 def test_every_fuzz_object_is_valid_yaml_and_stable():
@@ -233,6 +259,19 @@ def test_tagged_trees_roundtrip_and_yaml_agrees():
         if not isinstance(obj, (dict, list)):
             continue
         text = dumps(obj)
-        assert mf.loads(text) == obj, (obj, text)
-        assert strload(text) == obj, (obj, text)
+        assert same(mf.loads(text), obj), (obj, text)
+        assert same(typedload(text), obj), (obj, text)
         assert dumps(mf.loads(text)) == text
+
+
+def test_typed_values_roundtrip():
+    obj = {
+        "i": [0, -1, 2**63 - 1, -(2**63)],
+        "f": [1.5, -0.0, 1e22, 1e-7, 5.0],
+        "b": [True, False],
+        "n": None,
+        "s": ["1", "1.5", "true", "null", "-0", "e5", "1e5"],
+    }
+    out = dumps(obj)
+    assert same(mf.loads(out), obj)
+    assert same(typedload(out), obj)

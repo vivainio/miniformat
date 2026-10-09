@@ -46,7 +46,7 @@ def test_loader_alone_as_top_level_module(tmp_path):
     shutil.copy(PKG / "mfloader.py", tmp_path / "mini.py")
     code = PRELUDE + "import mini; print(mini.loads('a: 1\\nb:\\n  - x\\n'))"
     r = run_py(code, tmp_path, str(tmp_path))
-    assert r.returncode == 0 and "{'a': '1', 'b': ['x']}" in r.stdout, r.stderr
+    assert r.returncode == 0 and "{'a': 1, 'b': ['x']}" in r.stdout, r.stderr
 
 
 def test_loader_alone_inside_someone_elses_package(tmp_path):
@@ -80,7 +80,7 @@ def test_loader_has_no_import_time_side_effects(tmp_path):
 
 
 def test_loader_is_small():
-    assert len((PKG / "mfloader.py").read_text().splitlines()) < 550
+    assert len((PKG / "mfloader.py").read_text().splitlines()) < 600
 
 
 # -- the directory, in various states of completeness ------------------------------
@@ -133,7 +133,7 @@ def test_copied_whole_directory_still_has_a_command_line(tmp_path):
         capture_output=True,
         text=True,
     )
-    assert r.returncode == 0 and '"a": "1"' in r.stdout, r.stderr
+    assert r.returncode == 0 and '"a": 1' in r.stdout, r.stderr
 
 
 def test_dumper_without_loader_fails_clearly(tmp_path):

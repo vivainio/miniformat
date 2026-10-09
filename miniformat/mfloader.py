@@ -6,9 +6,10 @@ This is the loader.  It is self-contained: to vendor it, copy just this file
 
 The promise: any YAML parser can parse a document this module accepts (and
 any editor's YAML highlighting works on it).  What it *means* is up to this
-module: *every scalar is a string* (``no``, ``8080`` and ``1.10`` stay as
-written; convert them where you use them, e.g. ``int(cfg["db"]["port"])``)
-and ``#+include`` is expanded.
+module: a plain scalar is read the way JSON reads a value -- ``true``,
+``false``, ``null`` and numbers in JSON syntax are typed, everything else
+(``yes``, ``~``, ``0x1f``, ``010``, ``1_000``) is a string; quote a scalar
+(``"80"``) to force a string -- and ``#+include`` is expanded.
 
 The format
 ----------
@@ -16,13 +17,14 @@ The format
   indenting with spaces (tabs are an error);
 * a list under a key is always indented below it (never at the key's column);
 * tab characters only appear in comments and ``|`` blocks (``\\t`` in quotes);
-* scalars: plain (``text``) or double-quoted with JSON escapes (``"a\\tb"``);
+* scalars: plain (``text``, ``80``, ``true``) or double-quoted with JSON
+  escapes (``"a\\tb"``); keys are always strings;
 * multi-line text: ``|`` literal blocks only (clip chomping: one final newline);
 * ``{}`` and ``[]`` for empty containers, and as the only other flow syntax a
-  value (after ``key:`` or ``-``) may be one line of JSON whose leaves are all
-  strings: ``["a", "b"]``, ``{"k": ["v"]}``, ``[{"n": "x"}]``.  No comment may
-  follow it, and (so that YAML parsers read it the same) no surrogate
-  ``\\u`` escapes and no duplicate keys;
+  value (after ``key:`` or ``-``) may be one line of JSON: ``["a", "b"]``,
+  ``{"k": [1, true]}``, ``[{"n": "x"}]``.  No comment may follow it, and (so
+  that YAML parsers read it the same) no surrogate ``\\u`` escapes, no
+  duplicate keys and no ``NaN`` / ``Infinity``;
 * a value may start with a tag, ``key: !Name value`` (the value is anything
   above, including a ``|`` block or a nested map/list), which loads as the
   one-key map ``{"!Name": value}``.  One tag per value, none on keys;
@@ -43,7 +45,7 @@ The format
 
 Rejected with a line-numbered error: tabs for indentation, anchors/aliases,
 ``!!`` tags, ``>`` folded scalars, chomp indicators, single quotes, other flow
-syntax (JSON numbers, booleans, ``null``, multi-line JSON, flow after a tag),
+syntax (multi-line JSON, flow after a tag),
 duplicate keys, multiple documents, ``a: b: c`` (quote it), and multi-line plain
 scalars.
 
@@ -97,6 +99,10 @@ _TAG = re.compile(r"![A-Za-z](?:[A-Za-z0-9_.:-]*[A-Za-z0-9_])?(?= |$)")
 _PRAGMA = re.compile(r"#\+([a-z][a-z0-9-]*)(?: +(\S.*?))? *$")
 _MAX_INCLUDES = 1000
 _MAX_JSON_DEPTH = 100
+# A plain scalar is a number when it is one in JSON syntax.
+_NUMBER = re.compile(r"-?(?:0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?")
+_LITERALS = {"true": True, "false": False, "null": None}
+_INT_LIMIT = 2**63  # integers outside the 64-bit range stay strings
 
 
 # --------------------------------------------------------------------------
@@ -105,7 +111,8 @@ _MAX_JSON_DEPTH = 100
 
 
 def loads(text, base=None):
-    """Parse a document into nested ``dict`` / ``list`` / ``str``.
+    """Parse a document into nested ``dict`` / ``list`` / ``str`` / ``int`` /
+    ``float`` / ``bool`` / ``None``.
 
     ``base`` is the directory that ``#+include`` paths are relative to; without
     it, ``#+include`` is an error.
@@ -131,6 +138,23 @@ def _prepare(text, file=None):
         if m:
             raise MiniFormatError("unsupported character %r" % m.group(), n, line, file)
     return lines
+
+
+def _typed(s):
+    """A plain scalar's value: a JSON literal or number, else the string."""
+    if s in _LITERALS:
+        return _LITERALS[s]
+    m = _NUMBER.fullmatch(s)
+    if m:
+        if m.group(1) is None and m.group(2) is None:
+            n = int(s)
+            if -_INT_LIMIT <= n < _INT_LIMIT:
+                return n
+        else:
+            f = float(s)
+            if f - f == 0:  # finite
+                return f
+    return s
 
 
 def _split_comment(s):
@@ -374,10 +398,10 @@ class _Parser:
             return self.json_flow(rest)
         s = cut.rstrip("\t ")
         self.check_plain(s)
-        return s
+        return _typed(s)
 
     def json_flow(self, rest):
-        """One line of JSON in which every leaf is a string."""
+        """One line of JSON."""
         for m in _QUOTED.finditer(rest):
             for esc in _ESCAPE.finditer(m.group()):
                 code = esc.group(1)
@@ -392,8 +416,17 @@ class _Parser:
                 d[k] = v
             return d
 
+        def constant(name):
+            raise ValueError("%s is not allowed in a JSON value" % name)
+
+        decoder = json.JSONDecoder(
+            object_pairs_hook=pairs,
+            parse_int=_typed,
+            parse_float=_typed,
+            parse_constant=constant,
+        )
         try:
-            tree, end = json.JSONDecoder(object_pairs_hook=pairs).raw_decode(rest)
+            tree, end = decoder.raw_decode(rest)
         except json.JSONDecodeError as e:
             raise self.err("bad JSON (%s)" % e.msg) from None
         except ValueError as e:
@@ -414,10 +447,6 @@ class _Parser:
                 stack += [(v, depth + 1) for v in node.values()]
             elif isinstance(node, list):
                 stack += [(v, depth + 1) for v in node]
-            elif not isinstance(node, str):
-                raise self.err(
-                    "JSON values must be strings (quote %s)" % json.dumps(node)
-                )
         return tree
 
     def unquote(self, token):

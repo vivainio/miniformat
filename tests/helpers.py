@@ -2,6 +2,7 @@
 document generators for the fuzz tests."""
 
 import random
+import re
 
 import yaml
 
@@ -9,7 +10,11 @@ import yaml
 def _tagged(loader, suffix, node):
     """'!Name value' -> {"!Name": value}, the way miniformat reads tags."""
     if isinstance(node, yaml.ScalarNode):
-        value = loader.construct_scalar(node)
+        plain = node.style is None  # only plain scalars are typed by their text
+        tag = loader.resolve(yaml.ScalarNode, node.value, (plain, not plain))
+        value = loader.construct_object(
+            yaml.ScalarNode(tag, node.value, node.start_mark, node.end_mark, node.style)
+        )
     elif isinstance(node, yaml.SequenceNode):
         value = loader.construct_sequence(node, deep=True)
     else:
@@ -24,39 +29,68 @@ class TagLoader(yaml.SafeLoader):
 TagLoader.add_multi_constructor("!", _tagged)
 
 
-class StrLoader(TagLoader):
-    """PyYAML with implicit typing switched off: plain scalars stay str."""
+class TypedLoader(TagLoader):
+    """PyYAML told to type plain scalars the way miniformat does: JSON's
+    true / false / null / numbers (64-bit ints, finite floats), nothing else
+    (no yes/no, ~, 0x1F, 010, 1_000 ...).  Keys always stay strings."""
+
+    yaml_implicit_resolvers = {}
+
+    def construct_mapping(self, node, deep=False):
+        if isinstance(node, yaml.MappingNode):
+            self.flatten_mapping(node)
+        out = {}
+        for key_node, value_node in node.value:
+            if isinstance(key_node, yaml.ScalarNode):
+                key = self.construct_scalar(key_node)
+            else:
+                key = self.construct_object(key_node, deep=True)
+            out[key] = self.construct_object(value_node, deep=deep)
+        return out
 
 
-StrLoader.yaml_implicit_resolvers = {}
+_INT = r"-?(?:0|[1-9][0-9]*)"
+_FLOAT = _INT + r"(?:\.[0-9]+(?:[eE][+-]?[0-9]+)?|[eE][+-]?[0-9]+)"
+_DIGITS = list("-0123456789")
+for _tag, _re, _first in [
+    ("bool", r"(?:true|false)\Z", list("tf")),
+    ("null", r"null\Z", ["n"]),
+    ("int", _INT + r"\Z", _DIGITS),
+    ("float", _FLOAT + r"\Z", _DIGITS),
+]:
+    TypedLoader.add_implicit_resolver(
+        "tag:yaml.org,2002:" + _tag, re.compile("^" + _re), _first
+    )
 
 
-def strload(text):
-    return yaml.load(text, Loader=StrLoader)
+def _num(convert):
+    def construct(loader, node):
+        text = loader.construct_scalar(node)
+        v = convert(text)
+        if isinstance(v, int) and not -(2**63) <= v < 2**63:
+            return text
+        if isinstance(v, float) and v - v != 0:
+            return text
+        return v
+
+    return construct
 
 
-def same_shape(ours, theirs):
-    """Same nesting, key order and strings, ignoring YAML's scalar typing
-    (no -> False, 1 -> int, empty -> None).  Where YAML kept a str it must
-    equal ours."""
-    if isinstance(ours, dict):
-        return (
-            isinstance(theirs, dict)
-            and len(ours) == len(theirs)
-            and all(
-                same_shape(ok, tk) and same_shape(ov, tv)
-                for (ok, ov), (tk, tv) in zip(ours.items(), theirs.items())
-            )
-        )
-    if isinstance(ours, list):
-        return (
-            isinstance(theirs, list)
-            and len(ours) == len(theirs)
-            and all(same_shape(a, b) for a, b in zip(ours, theirs))
-        )
-    if isinstance(theirs, (dict, list)):
-        return False
-    return ours == theirs if isinstance(theirs, str) else True
+TypedLoader.add_constructor("tag:yaml.org,2002:int", _num(int))
+TypedLoader.add_constructor("tag:yaml.org,2002:float", _num(float))
+TypedLoader.add_constructor(
+    "tag:yaml.org,2002:bool", lambda ld, n: ld.construct_scalar(n) == "true"
+)
+TypedLoader.add_constructor("tag:yaml.org,2002:null", lambda ld, n: None)
+
+
+def typedload(text):
+    return yaml.load(text, Loader=TypedLoader)
+
+
+def same(a, b):
+    """Equal including types (1 is not True, 1 is not 1.0) and key order."""
+    return repr(a) == repr(b)
 
 
 ALPHABET = list("abc XYZ019:-#?,[]{}&*!|>'\"%@`\\/\t.~") + [
@@ -76,6 +110,15 @@ TRICKY = [
     "no",
     "null",
     "1.10",
+    "80",
+    "-5",
+    "true",
+    "false",
+    "1e3",
+    "9223372036854775808",
+    "010",
+    "-0",
+    "Infinity",
     "- x",
     "a: b",
     "a #b",
@@ -133,10 +176,34 @@ def rand_str(r):
     return "".join(r.choice(ALPHABET) for _ in range(r.randint(0, 8)))
 
 
+def rand_scalar(r):
+    k = r.random()
+    if k < 0.7:
+        return rand_str(r)
+    return r.choice(
+        [
+            True,
+            False,
+            None,
+            0,
+            1,
+            -7,
+            80,
+            2**63 - 1,
+            -(2**63),
+            1.5,
+            -0.25,
+            1e22,
+            1e-7,
+            5.0,
+        ]
+    )
+
+
 def rand_obj(r, depth=0):
     k = r.random()
     if depth > 3 or k < 0.45:
-        return rand_str(r)
+        return rand_scalar(r)
     if k < 0.75:
         return {rand_str(r): rand_obj(r, depth + 1) for _ in range(r.randint(0, 4))}
     return [rand_obj(r, depth + 1) for _ in range(r.randint(0, 4))]

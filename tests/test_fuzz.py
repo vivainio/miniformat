@@ -2,7 +2,7 @@
 
 import pytest
 
-from helpers import LINE_BITS, mutate, rand_root, rand_text, rng, strload
+from helpers import LINE_BITS, mutate, rand_root, rand_text, rng, same, typedload
 from miniformat import mfloader as mf
 from miniformat.mfdumper import dumps
 
@@ -16,8 +16,8 @@ def test_dump_then_load_roundtrips_and_yaml_agrees(seed):
     for _ in range(N):
         obj = rand_root(r)
         text = dumps(obj)
-        assert mf.loads(text) == obj, (obj, text)
-        assert strload(text) == obj, (obj, text)
+        assert same(mf.loads(text), obj), (obj, text)
+        assert same(typedload(text), obj), (obj, text)
         assert dumps(mf.loads(text)) == text
 
 
@@ -32,7 +32,7 @@ def test_whatever_the_loader_accepts_means_the_same_in_yaml(seed):
         except mf.MiniFormatError:
             continue
         accepted += 1
-        assert strload(text) == ours, text
+        assert same(typedload(text), ours), text
     assert accepted > 20
 
 
@@ -46,7 +46,7 @@ def test_mutated_documents_never_crash_and_stay_yaml_compatible(seed):
         except mf.MiniFormatError as e:
             assert e.line is None or 1 <= e.line <= text.count("\n") + 2, (text, e)
             continue
-        assert strload(text) == ours, text
+        assert same(typedload(text), ours), text
         assert mf.loads(dumps(ours)) == ours
 
 

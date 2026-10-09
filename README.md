@@ -6,9 +6,10 @@ keep working. That is all it promises about YAML; what the file *means* is up
 to miniformat (see below). The loader is a single stdlib-only Python file you
 can copy into your project.
 
-Two things are miniformat's own: **every scalar is a string** (`no`, `8080` and
-`1.10` stay exactly as written, no Norway problem), and `#+include` pulls in
-other files.
+Two things are miniformat's own: **plain scalars are typed the way JSON types
+values** (`8080`, `1.5`, `true`, `false` and `null` are numbers, bools and
+`None`; everything else, `no`, `010`, `1_000`, `~`, stays a string, no Norway
+problem; quote a value to force a string), and `#+include` pulls in other files.
 
 ## Reading values
 
@@ -24,24 +25,26 @@ servers:
   - host: a.example.com
 ```
 
-`loads` returns what `json.load` would: nested dicts, lists and strings, with
-the one difference that every scalar is a string. Nothing is converted:
+`loads` returns what `json.load` would: nested dicts, lists, strings, ints,
+floats, bools and `None`. Only JSON's own literals and numbers are typed, so
+`debug: yes` is the string `'yes'`:
 
 ```python
 from miniformat import mfloader
 
 cfg = mfloader.loads(open("app.yaml").read())
-# {'name': 'my-app', 'db': {'port': '5432'}, 'debug': 'yes',
+# {'name': 'my-app', 'db': {'port': 5432}, 'debug': 'yes',
 #  'servers': [{'host': 'a.example.com'}]}
 
 cfg["servers"][0]["host"]  # 'a.example.com'
 cfg["db"].get("timeout", "30")  # a default, with the plain dict method
-int(cfg["db"]["port"])  # 5432: you convert the string where you use it
+cfg["db"]["port"]  # 5432, an int
 ```
 
 ### Typed values with pydantic
 
-To get real `int`s and `bool`s without converting by hand, validate the result
+Words like `yes` stay strings, and a quoted `"5432"` is a string too. To get
+real `int`s and `bool`s from those, and to check the shape, validate the result
 against a [pydantic](https://docs.pydantic.dev/) model. Its default (lax) mode
 coerces strings: `"5432"` becomes `5432`, `"yes"` becomes `True`. pydantic is
 not a dependency of miniformat; this is just a recipe.
@@ -87,8 +90,9 @@ Plain `@dataclass` types work too, via `pydantic.TypeAdapter(MyDataclass).valida
   only dependency: a package to install, pin and audit just to read one file.
   The loader here is a single stdlib-only file you can copy into your project.
 - **And YAML itself has sharp edges**: implicit typing (`no` becomes `False`,
-  `1.10` a float), anchors, tags, several ways to write the same thing.
-  miniformat keeps the syntax people like and drops those.
+  `010` an octal, `1_000` an int), anchors, tags, several ways to write the same
+  thing. miniformat keeps the syntax people like, types values only the way
+  JSON does, and drops the rest.
 
 Because the files stay parseable as YAML, you don't lose the tooling: editors,
 highlighting and linters keep working, and you can still read the files with a
@@ -145,7 +149,7 @@ syntax highlighting, schema tools and CI linters pick them up as they are.
 ---                       # optional
 # comments
 name: my-app
-port: 8080                # a string: "8080"
+port: 8080                # an int; "8080" would be a string
 quoted: "a: b\tc"         # double quotes, JSON escapes
 tags:
   - web
@@ -160,7 +164,7 @@ servers:
     ip: "1.2.3.4"
   - name: b
     opts: {}              # {} and [] for empty containers
-    tags: ["web", "db"]   # or one line of JSON, strings only
+    tags: ["web", "db"]   # or one line of JSON
 empty:                    # loads as ""
 ```
 
@@ -169,16 +173,19 @@ Rules:
   below it, not at the key's column.
 - Tab characters are only allowed in comments and `|` blocks (use `\t` inside
   quotes); anywhere else they are an error.
-- Scalars are plain or double-quoted. Plain scalars are one line, may not
+- Scalars are plain or double-quoted. A plain `true`, `false`, `null` or number
+  in JSON syntax (`-5`, `1.5`, `2E-3`; not `+1`, `010`, `.5` or `1.`) is typed;
+  integers outside 64 bits and numbers that overflow a float stay strings.
+  Every other plain scalar is a string, and a quoted one always is. Keys are
+  always strings. Plain scalars are one line, may not
   start with `[ ] { } & * ! | > ' " % @ \` # ,` (or `- `, `? `, `: `), and may not contain
   `: `, ` #` or a tab. Quote them instead. Only space and tab count as
   whitespace (a non-breaking space is an ordinary character).
-- A value may be one line of JSON in which every leaf is a string: `["a", "b"]`,
-  `{"k": "v"}`, `[{"name": "a", "tags": ["x"]}]`. Numbers, `true`, `false` and
-  `null` are errors (quote them), as are a trailing `# comment`, a value that
-  spans lines, duplicate keys and `\uD800`-style surrogate escapes (YAML
-  parsers disagree on them). It works after `key:` and `-`, not at the document
-  root or after a tag.
+- A value may be one line of JSON: `["a", 1]`, `{"k": true}`,
+  `[{"name": "a", "tags": ["x"]}]`, typed as JSON types it. A trailing
+  `# comment`, a value that spans lines, duplicate keys, `NaN` / `Infinity` and
+  `\uD800`-style surrogate escapes (YAML parsers disagree on them) are errors.
+  It works after `key:` and `-`, not at the document root or after a tag.
 - Multi-line text uses `|` only (clip chomping).
 - Root is a map or a list. Empty documents are an error.
 
@@ -186,7 +193,7 @@ A `|` block that ends at the end of the file without a final newline has no
 trailing newline either, exactly as in YAML.
 
 Rejected with a line-numbered error: anchors, aliases, `!!` tags, tags on keys, `>` folded scalars,
-chomp indicators, single quotes, flow syntax other than `{}`/`[]` and one-line string-only JSON, duplicate
+chomp indicators, single quotes, flow syntax other than `{}`/`[]` and one-line JSON, duplicate
 keys, multiple documents, `a: b: c`, multi-line plain scalars.
 
 ```
@@ -197,21 +204,34 @@ bad.yaml: line 1: ': ' inside a plain value; quote it with double quotes
 
 ### Syntax by example
 
-Each pair shows a document and what `mfloader.loads` returns for it. Every scalar
-is a string.
+Each pair shows a document and what `mfloader.loads` returns for it.
 
-**Scalars are never converted:**
+**Typed like JSON, nothing else:**
 
 ```yaml
 port: 8080
-debug: yes
-version: 1.10
+ratio: 0.5
+on: true
 nothing: null
+debug: yes
+code: 010
+version: "1.10"
 ```
 
 ```python
-{"port": "8080", "debug": "yes", "version": "1.10", "nothing": "null"}
+{
+    "port": 8080,
+    "ratio": 0.5,
+    "on": True,
+    "nothing": None,
+    "debug": "yes",
+    "code": "010",
+    "version": "1.10",
+}
 ```
+
+A bare `1.10` would be the float `1.1`, so quote version strings and other
+numbers that must keep their text.
 
 **Plain and quoted strings.** `:` and `#` are fine inside a plain value unless
 followed by a space (colon) or preceded by one (hash); quote anything else
@@ -361,7 +381,7 @@ choice: !If
 
 A value may start with a tag (`!Name`, as in YAML): the tag, a space, then the value. It loads as
 a one-key map, `{"!Name": value}`. This keeps tag-heavy files such as AWS
-CloudFormation templates readable without giving up "every scalar is a string":
+CloudFormation templates readable:
 
 ```yaml
 queue: !Ref MyQueue
@@ -388,7 +408,7 @@ choice: !If
   or `[]`, or a nested map or list on the next lines. `key: !Tag` with nothing
   after it is `{"!Tag": ""}`.
 - One tag per value, and none on keys or at the document root. `!!str`-style
-  tags and flow collections (`!Join [a, b]`) are errors.
+  tags and flow collections (`!Join ["a", "b"]`) are errors.
 - A one-key map whose key looks like a tag is the same thing: `"!Ref": x`
   (quoted key) and `!Ref x` both load as `{"!Ref": "x"}`. The dumper writes
   such a map as a tag, so `--fmt` normalizes to the tag form.
@@ -404,9 +424,11 @@ from miniformat import mfdumper
 text = mfdumper.dumps({"name": "x", "ports": ["80", "443"]})
 ```
 
-Only `str`, `dict` (string keys) and `list`/`tuple` can be written; convert
-numbers and bools with `str()` first. Output is deterministic and
-`loads(dumps(x)) == x`. Lone surrogates can't be written (`ValueError`).
+`str`, `bool`, `None`, `int` (64-bit), finite `float`, `dict` (string keys) and
+`list`/`tuple` can be written. Strings that would read back as a number, bool
+or null are quoted (`"80"`). Output is deterministic and `loads(dumps(x)) == x`.
+Lone surrogates, huge ints and `nan` / `inf` can't be written (`ValueError` /
+`TypeError`).
 
 `mfdumper.flatten(text, base)` loads `text` (with `#+include` resolved against
 `base`) and returns it as canonical text with no includes left, for sending a
@@ -478,9 +500,9 @@ with fixtures in `tests/cases`.
 
 The promise is about syntax: any YAML parser can parse a miniformat file.
 Meaning is not promised: a YAML parser types scalars its own way (`no`
-becomes `False`, `8080` an int, `key:` `None`), and ignores `#+` pragmas. For
-documents without includes, the tests also check that PyYAML (with implicit
-typing turned off) reads the same structure, on every fixture and on
+becomes `False`, `010` an octal, `key:` `None`), and ignores `#+` pragmas. For
+documents without includes, the tests also check that PyYAML (with its implicit
+typing replaced by miniformat's rules) reads the same values, on every fixture and on
 hundreds of thousands of random and mutated documents. The fixtures in
 `tests/cases` are plain files (document + expected JSON, or expected error
 line and message), so ports to other languages can run the same suite.
@@ -489,10 +511,8 @@ line and message), so ports to other languages can run the same suite.
 
 A whole JSON document is not valid miniformat, even though YAML parsers read
 most JSON: the root must be a block map or list, and a bare `"s"` is an error.
-Inside a document, one line of JSON is fine as a value (see the rules above) as
-long as every leaf is a string, because every scalar is a string. Convert JSON
-to miniformat by loading it and writing it with `mfdumper.dumps` (after turning
-the scalars into strings).
+Inside a document, one line of JSON is fine as a value (see the rules above).
+Convert JSON to miniformat by loading it and writing it with `mfdumper.dumps`.
 
 ## Development
 

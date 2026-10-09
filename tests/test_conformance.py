@@ -11,9 +11,8 @@ import json
 from pathlib import Path
 
 import pytest
-import yaml
 
-from helpers import TagLoader, same_shape, strload
+from helpers import same, typedload
 from miniformat import mfloader as mf
 from miniformat.mfdumper import dumps
 
@@ -36,23 +35,22 @@ def test_fixture_counts():
 def test_valid_loads_as_expected(name):
     text, expected = read_valid(name)
     got = mf.loads(text)
-    assert got == expected
+    assert same(got, expected)
     assert json.dumps(got) == json.dumps(expected)  # key order too
 
 
 @pytest.mark.parametrize("name", VALID)
 def test_valid_is_valid_yaml_with_same_meaning(name):
     text, expected = read_valid(name)
-    assert strload(text) == expected
-    assert same_shape(expected, yaml.load(text, Loader=TagLoader))
+    assert same(typedload(text), expected)
 
 
 @pytest.mark.parametrize("name", VALID)
 def test_valid_survives_the_dumper(name):
     _, expected = read_valid(name)
     out = dumps(expected)
-    assert mf.loads(out) == expected
-    assert strload(out) == expected
+    assert same(mf.loads(out), expected)
+    assert same(typedload(out), expected)
     assert dumps(mf.loads(out)) == out  # canonical form is a fixed point
 
 

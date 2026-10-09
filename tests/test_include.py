@@ -27,7 +27,7 @@ def test_include_at_root_merges_entries(tmp_path):
         {"main.yaml": "a: 1\n#+include more.yaml\nz: 9\n", "more.yaml": "b: 2\nc: 3\n"},
     )
     d = load_file(tmp_path / "main.yaml")
-    assert d == {"a": "1", "b": "2", "c": "3", "z": "9"}
+    assert d == {"a": 1, "b": 2, "c": 3, "z": 9}
     assert list(d) == ["a", "b", "c", "z"]
 
 
@@ -45,7 +45,7 @@ def test_include_indented_under_a_key(tmp_path):
         },
     )
     assert load_file(tmp_path / "main.yaml") == {
-        "db": {"host": "h", "ports": ["1", "2"], "note": "text\nmore\n"},
+        "db": {"host": "h", "ports": [1, 2], "note": "text\nmore\n"},
         "other": "x",
     }
 
@@ -68,7 +68,7 @@ def test_include_as_value_of_list_item_key(tmp_path):
         tmp_path,
         {"main.yaml": "- name: x\n  cfg:\n    #+include c.yaml\n", "c.yaml": "p: 1\n"},
     )
-    assert load_file(tmp_path / "main.yaml") == [{"name": "x", "cfg": {"p": "1"}}]
+    assert load_file(tmp_path / "main.yaml") == [{"name": "x", "cfg": {"p": 1}}]
 
 
 def test_nested_includes_are_relative_to_the_including_file(tmp_path):
@@ -81,7 +81,7 @@ def test_nested_includes_are_relative_to_the_including_file(tmp_path):
             "sub/deeper/c.yaml": "c: 3\n",
         },
     )
-    assert load_file(tmp_path / "main.yaml") == {"a": "1", "b": "2", "c": "3"}
+    assert load_file(tmp_path / "main.yaml") == {"a": 1, "b": 2, "c": 3}
 
 
 def test_same_file_may_be_included_twice_in_different_places(tmp_path):
@@ -100,13 +100,13 @@ def test_leading_document_marker_and_comments_in_included_file(tmp_path):
         tmp_path,
         {"main.yaml": "#+include i.yaml\nb: 2\n", "i.yaml": "# c\n---\na: 1\n"},
     )
-    assert load_file(tmp_path / "main.yaml") == {"a": "1", "b": "2"}
+    assert load_file(tmp_path / "main.yaml") == {"a": 1, "b": 2}
 
 
 def test_crlf_and_bom_in_included_file(tmp_path):
     (tmp_path / "i.yaml").write_bytes(b"\xef\xbb\xbfa: 1\r\nb:\r\n  - x\r\n")
     write(tmp_path, {"main.yaml": "#+include i.yaml\n"})
-    assert load_file(tmp_path / "main.yaml") == {"a": "1", "b": ["x"]}
+    assert load_file(tmp_path / "main.yaml") == {"a": 1, "b": ["x"]}
 
 
 def test_empty_included_file_adds_nothing(tmp_path):
@@ -117,7 +117,7 @@ def test_empty_included_file_adds_nothing(tmp_path):
             "e.yaml": "# nothing\n",
         },
     )
-    assert load_file(tmp_path / "main.yaml") == {"a": "1", "b": ""}
+    assert load_file(tmp_path / "main.yaml") == {"a": 1, "b": ""}
 
 
 def test_duplicate_key_across_files_is_an_error_naming_the_file(tmp_path):
@@ -204,7 +204,7 @@ def test_included_text_takes_the_indent_of_the_include_line(tmp_path):
         d = mf.loads(text.format(pad=" " * pad), base=str(tmp_path))
         while "r" in d or "s" in d or "t" in d:
             d = d[next(iter(d))]
-        assert d == {"a": "1", "b": ["x"]}
+        assert d == {"a": 1, "b": ["x"]}
 
 
 def test_loads_needs_a_base_directory(tmp_path):
@@ -239,13 +239,13 @@ def test_ordinary_comments_are_never_pragmas():
         "#\n"
         "a: 1\n"
     )
-    assert mf.loads(text) == {"a": "1"}
+    assert mf.loads(text) == {"a": 1}
 
 
 def test_pragma_look_alikes_after_a_value_are_plain_comments():
     # only a pragma on a line of its own counts
     assert mf.loads("a: 1 #+include nothing.yaml\nb: x #+bogus\n") == {
-        "a": "1",
+        "a": 1,
         "b": "x",
     }
     assert mf.loads("- a #+bogus\n") == ["a"]
@@ -340,7 +340,7 @@ def test_cli_follows_includes(tmp_path):
         capture_output=True,
         text=True,
     )
-    assert json.loads(r.stdout) == {"a": "1", "b": "2"}
+    assert json.loads(r.stdout) == {"a": 1, "b": 2}
 
 
 # ---------------------------------------------------------------------- globs
@@ -379,10 +379,10 @@ def test_glob_with_no_match_is_fine(tmp_path):
     write(
         tmp_path, {"main.yaml": "a: 1\n#+include none/*.yaml\nb:\n  #+include *.nope\n"}
     )
-    assert load_file(tmp_path / "main.yaml") == {"a": "1", "b": ""}
+    assert load_file(tmp_path / "main.yaml") == {"a": 1, "b": ""}
     (tmp_path / "empty").mkdir()
     write(tmp_path, {"main2.yaml": "a: 1\n#+include empty/*\n"})
-    assert load_file(tmp_path / "main2.yaml") == {"a": "1"}
+    assert load_file(tmp_path / "main2.yaml") == {"a": 1}
 
 
 def test_glob_without_magic_still_requires_the_file(tmp_path):
@@ -403,8 +403,8 @@ def test_glob_takes_the_indent_of_the_pragma(tmp_path):
         },
     )
     assert load_file(tmp_path / "main.yaml") == {
-        "servers": ["z", "a", {"b": "1"}, "c"],
-        "plugins": {"x": "1", "y": ["2"]},
+        "servers": ["z", "a", {"b": 1}, "c"],
+        "plugins": {"x": 1, "y": [2]},
     }
 
 
@@ -418,7 +418,7 @@ def test_glob_skips_directories_and_dotfiles(tmp_path):
             "d/sub/inner.yaml": "i: 3\n",
         },
     )
-    assert load_file(tmp_path / "main.yaml") == {"a": "1"}
+    assert load_file(tmp_path / "main.yaml") == {"a": 1}
 
 
 def test_glob_question_mark_and_character_classes(tmp_path):
@@ -489,13 +489,13 @@ def test_glob_inside_an_included_file_is_relative_to_that_file(tmp_path):
 def test_glob_characters_in_the_base_directory_are_not_magic(tmp_path):
     odd = tmp_path / "we[ir]d*dir"
     write(odd, {"main.yaml": "#+include c/*.yaml\n", "c/a.yaml": "a: 1\n"})
-    assert load_file(odd / "main.yaml") == {"a": "1"}
-    assert mf.loads("#+include c/*.yaml\n", base=str(odd)) == {"a": "1"}
+    assert load_file(odd / "main.yaml") == {"a": 1}
+    assert mf.loads("#+include c/*.yaml\n", base=str(odd)) == {"a": 1}
 
 
 def test_glob_works_with_loads_and_base(tmp_path):
     write(tmp_path, {"c/a.yaml": "a: 1\n", "c/b.yaml": "b: 2\n"})
-    assert mf.loads("#+include c/*.yaml\n", base=str(tmp_path)) == {"a": "1", "b": "2"}
+    assert mf.loads("#+include c/*.yaml\n", base=str(tmp_path)) == {"a": 1, "b": 2}
 
 
 def test_glob_without_a_base_directory_is_an_error():
@@ -559,7 +559,7 @@ def test_plain_star_does_not_descend(tmp_path):
             "c/s/b.yaml": "b: 1\n",
         },
     )
-    assert load_file(tmp_path / "main.yaml") == {"a": "1"}
+    assert load_file(tmp_path / "main.yaml") == {"a": 1}
 
 
 def test_flatten_expands_includes(tmp_path):

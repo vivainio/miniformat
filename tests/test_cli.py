@@ -26,7 +26,7 @@ def good(tmp_path):
 def test_prints_json(good):
     r = run(good)
     assert r.returncode == 0 and r.stderr == ""
-    assert json.loads(r.stdout) == {"b": "2", "a": ["x", "é"]}
+    assert json.loads(r.stdout) == {"b": 2, "a": ["x", "é"]}
     assert "é" in r.stdout  # not escaped
 
 
@@ -59,4 +59,4 @@ def test_usage_errors(args):
 
 def test_main_is_callable_in_process(good, capsys):
     assert main([good]) == 0
-    assert json.loads(capsys.readouterr().out)["b"] == "2"
+    assert json.loads(capsys.readouterr().out)["b"] == 2

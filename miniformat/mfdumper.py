@@ -3,8 +3,9 @@
 Not needed to read files; copy it next to mfloader.py (same package) only if
 you also want to write them.  ``from miniformat import mfdumper``.
 Output is deterministic (dict order preserved) and comments are not kept.
-Only ``str``, ``dict`` (str keys) and ``list``/``tuple`` can be written;
-convert numbers and bools with ``str()`` first.
+``str``, ``bool``, ``None``, ``int`` (64-bit), finite ``float``, ``dict``
+(str keys) and ``list``/``tuple`` can be written; a string that would read
+back as a number, bool or null is quoted.
 
 
 MIT License -- see LICENSE.
@@ -14,8 +15,10 @@ from .mfloader import (
     _BAD_CHAR,
     _COLON,
     _COMMENT,
+    _INT_LIMIT,
     _PLAIN_BAD_START,
     _TAG,
+    _typed,
     loads,
 )
 
@@ -62,7 +65,7 @@ def _plain_ok(s):
         return False
     if _COLON.search(s) or _COMMENT.search(s) or s in ("{}", "[]"):
         return False
-    return True
+    return isinstance(_typed(s), str)  # "80" must be quoted to stay a string
 
 
 def _block_ok(s):
@@ -135,9 +138,17 @@ def _entry(head, v, ind, path, tagged=True):
         if not v:
             return [head + (" {}" if isinstance(v, dict) else " []")]
         return [head] + _lines(v, ind + 2, path)
+    if v is None or isinstance(v, bool):
+        return [head + " " + ("null" if v is None else str(v).lower())]
+    if isinstance(v, int) and -_INT_LIMIT <= v < _INT_LIMIT:
+        return [head + " " + str(v)]
+    if isinstance(v, float) and v - v == 0:
+        return [head + " " + repr(v)]
     raise TypeError(
-        "can only dump str, dict and list, got %s at %s (convert with str())"
-        % (type(v).__name__, path or "<root>")
+        "cannot dump %s %r at %s (ints must fit in 64 bits, floats be finite)"
+        % (type(v).__name__, v, path or "<root>")
+        if isinstance(v, (int, float))
+        else "cannot dump %s at %s" % (type(v).__name__, path or "<root>")
     )
 
 
