@@ -182,10 +182,11 @@ Rules:
   `: `, ` #` or a tab. Quote them instead. Only space and tab count as
   whitespace (a non-breaking space is an ordinary character).
 - A value may be one line of JSON: `["a", 1]`, `{"k": true}`,
-  `[{"name": "a", "tags": ["x"]}]`, typed as JSON types it. A trailing
-  `# comment`, a value that spans lines, duplicate keys, `NaN` / `Infinity` and
-  `\uD800`-style surrogate escapes (YAML parsers disagree on them) are errors.
-  It works after `key:` and `-`, not at the document root or after a tag.
+  `[{"name": "a", "tags": ["x"]}]`, typed as JSON types it. It works after
+  `key:` and `-`, not at the document root or after a tag. These are errors:
+  a trailing `# comment`, a value that spans lines, duplicate keys,
+  `NaN` / `Infinity`, and `\uD800`-style surrogate escapes (YAML parsers
+  disagree on them).
 - Multi-line text uses `|` only (clip chomping).
 - Root is a map or a list. Empty documents are an error.
 
